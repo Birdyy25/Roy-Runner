@@ -278,6 +278,26 @@ const NEW_H = [
   "............w...........w.............",
   "....h.h......oo......h.h......^^.......",
 ];
+// bewegend en de lucht in: L slingerende lamp (eroverheen)  - plank op 2 hoog  + plank op 4 hoog  x / X plank boven messen
+const DYN_E = [
+  "......L............^.......",
+  "....--.......--.......^.......",
+  ".....L..........h..........",
+];
+const DYN_M = [
+  "...L.........^^.......L........",
+  "....xxxxxx.......^^.......",
+  "....--..++..--.......^......",
+  "...L......w...........^^.......",
+  "....h......L......oo.......",
+];
+const DYN_H = [
+  "...xxxxxxXXXXXX.......^^.......",
+  "...L.....L.....L.......^.......",
+  "....xxxx..XXXX..xxxx.......^......",
+  "...^^......L......w...........",
+  "...L......xxxxxx......L.......",
+];
 const K = ".....c........", KE = ".....e........", KG = ".....g........";
 const E = EASY, C = CH;
 const LEVELS = [
@@ -292,11 +312,14 @@ const THEMES = [
 ];
 
 let mode = 'level', levelIdx = 0, theme = THEMES[0];
-let blocks = [], spikes = [], pads = [], currys = [], worstjes = [], hangs = [], holes = [], wheels = [], END_X = 1000;
+let blocks = [], spikes = [], pads = [], currys = [], worstjes = [], hangs = [], holes = [], wheels = [], lamps = [], shelves = [], flys = [], END_X = 1000;
+const LAMP_R = 292, LAMP_PIV = -26 - LAMP_R, LAMP_A = .42, LAMP_L = 520;   // slingerende lamp: laagste punt 26 boven de vloer
+function lampPos(l) { const a = LAMP_A * Math.sin((l.x - P.x) * 2 * Math.PI / LAMP_L); return {a, x: l.x + LAMP_R * Math.sin(a), y: LAMP_PIV + LAMP_R * Math.cos(a)}; }
+const FLY_CEIL = -284, FLY_SPEED = 370; let FLY_G = 1100, FLAP = -300, FLY_MAXV = 400;
 const ROLL = .45, ROLL_FROM = 700;
 const wheelX = w => w.x - ROLL * Math.max(0, P.x - (w.x - ROLL_FROM));
 let tileCur = 0, curryId = 0, gen = null, themeFrom = null, themeT = 0;
-function clearWorld() { blocks = []; spikes = []; pads = []; currys = []; worstjes = []; hangs = []; holes = []; wheels = []; tileCur = 0; curryId = 0; gen = null; }
+function clearWorld() { blocks = []; spikes = []; pads = []; currys = []; worstjes = []; hangs = []; holes = []; wheels = []; lamps = []; shelves = []; flys = []; tileCur = 0; curryId = 0; gen = null; }
 function appendTiles(str) {
   const t0 = tileCur;
   for (let n = 0; n < str.length; n++) {
@@ -306,6 +329,13 @@ function appendTiles(str) {
     else if (ch === 'h') { hangs.push({x, kind: hsh % 2}); worstjes.push({x: x + T / 2, y: -22}); }
     else if (ch === 'o') { holes.push({x, first: str[n - 1] !== 'o', last: str[n + 1] !== 'o'}); if (str[n - 1] !== 'o') worstjes.push({x: x + (str[n + 1] === 'o' ? T : T / 2), y: -70}); }
     else if (ch === 'w') { wheels.push({x: x + T / 2}); worstjes.push({x: x + T / 2 - 217, y: -95}); }
+    else if (ch === 'L') { lamps.push({x: x + T / 2}); worstjes.push({x: x + T / 2, y: -118}); }
+    else if ('-+xX'.includes(ch)) {
+      const hi = ch === '+' || ch === 'X', grp = c => '-+xX'.includes(c) && ((c === '+' || c === 'X') === hi);
+      shelves.push({x, y: hi ? -160 : -80, first: !grp(str[n - 1]), last: !grp(str[n + 1])});
+      if (ch === 'x' || ch === 'X') spikes.push({x, base: 0, kind: 0});
+      if (!grp(str[n - 1])) { let j = n; while (grp(str[j])) j++; for (let k = n; k < j; k += 2) worstjes.push({x: (t0 + k) * T + T / 2, y: (hi ? -160 : -80) - 24}); }
+    }
     else if ('BCD'.includes(ch)) { const h = 'BCD'.indexOf(ch) + 1; blocks.push({x, y: -h * T, w: T, h: h * T, kind: h === 1 && str[n - 1] !== 'B' && str[n + 1] !== 'B' && str[n + 1] !== '^' && hsh % 2 ? 1 : 0}); }
     else if (ch === 'S') { blocks.push({x, y: -T, w: T, h: T}); spikes.push({x, base: -T}); }
     else if (ch === 'p') { pads.push({x}); for (const [dx, yy] of [[2.2, -150], [3.6, -195], [5, -150]]) worstjes.push({x: x + dx * T, y: yy}); }
@@ -329,9 +359,9 @@ function buildLevel(i) {
 }
 
 // ---- Eindeloos: stukken worden steeds moeilijker en het tempo gaat omhoog
-const ALL = EASY.concat(NEW_E, CH.slice(0, 10), NEW_M, CH.slice(10), NEW_H), N_EASY = EASY.length + NEW_E.length, N_MID = N_EASY + 10 + NEW_M.length;
-const SPEEDS = [330, 340, 350, 360, 370, 380, 390, 400];
-const OKSPEED = [[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400],[330,340,350,360,370,380,390,400]];  // per stuk: bij welke snelheden je minstens 0,1 s speling hebt in je timing
+const ALL = EASY.concat(NEW_E, DYN_E, CH.slice(0, 10), NEW_M, DYN_M, CH.slice(10), NEW_H, DYN_H), N_EASY = EASY.length + NEW_E.length + DYN_E.length, N_MID = N_EASY + 10 + NEW_M.length + DYN_M.length;
+const SPEEDS = [300, 330, 350, 370, 390, 410, 430, 450];   // begint rustig, na ongeveer 45 seconden op topsnelheid
+const OKSPEED = [[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430],[300,330,350,370,390,410,430],[300,330,350,370,390,410,430,450],[300,330,350,370,390],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450],[300,330,350,370,390,410,430,450]];  // per stuk: bij welke snelheden je minstens 0,1 s speling hebt in je timing
 function rng32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function buildEndless(seed) {
   clearWorld(); END_X = Infinity; theme = THEMES[0]; themeFrom = null; themeT = 0;
@@ -339,11 +369,25 @@ function buildEndless(seed) {
   appendTiles("...........");
   ensureAhead(0);
 }
+function appendFlappy(n) {   // Holy Roy: een stuk vliegen tussen palen door
+  const lv = Math.min(1, n / 20), x0 = (tileCur + 3) * T, gates = [], cnt = 5 + Math.round(lv * 3), spc = 290 - lv * 40, gh = 168 - lv * 20;
+  let gy = -gh / 2 - 20 - gen.r() * 30;   // eerste opening laag, zodat je vanaf de grond op tijd omhoog komt
+  for (let i = 0; i < cnt; i++) {
+    if (i) gy = Math.max(FLY_CEIL + gh / 2 + 14, Math.min(-gh / 2 - 8, gy + (gen.r() * 2 - 1) * 62));
+    const x = x0 + 300 + i * spc; gates.push({x, gy, gh});
+    worstjes.push({x, y: gy});
+    if (i) worstjes.push({x: x - spc / 2, y: (gy + gates[i - 1].gy) / 2});
+  }
+  for (const [dx, yy] of [[60, -70], [120, -120], [170, -150]]) worstjes.push({x: x0 + dx, y: yy});
+  const x1 = gates[gates.length - 1].x + 200; flys.push({x0, x1, gates});
+  tileCur = Math.ceil((x1 + 360) / T);
+}
 function genChunk() {
-  const n = gen.n++, tier = Math.min(SPEEDS.length - 1, Math.floor(n / 4)), sp = SPEEDS[tier];
+  const n = gen.n++, tier = n < 2 ? 0 : Math.min(SPEEDS.length - 1, 1 + Math.floor((n - 2) / 2)), sp = SPEEDS[tier];
   gen.segs.push({x: tileCur * T, sp, tier});
+  if (!gen.noFly && !window.NO_FLY && n >= 5 && n - (gen.lastFly == null ? -99 : gen.lastFly) >= 6 && gen.r() < .3) { gen.lastFly = n; appendFlappy(n); return; }
   if (n % 5 === 3) { const q = gen.r(); appendTiles(q < .34 ? K : q < .67 ? KE : KG); return; }
-  const d = Math.min(1, n / 28), r = gen.r();
+  const d = Math.min(1, n / 12), r = gen.r();
   const lo = r < 1 - d * 1.2 ? 0 : r < 1 - d * 0.5 ? N_EASY : N_MID;
   const hi = lo === 0 ? N_EASY : lo === N_EASY ? N_MID : ALL.length;
   let pool = []; for (let i = lo; i < hi; i++) if (!OKSPEED || OKSPEED[i].includes(sp)) pool.push(i);
@@ -356,7 +400,7 @@ function ensureAhead(px) {
   if (gen.fixed) return;
   let grew = false;
   while (tileCur * T < px + 2600) { genChunk(); grew = true; }
-  if (grew && px > 4000) { const cut = px - 1600, f = o => o.x > cut; blocks = blocks.filter(f); spikes = spikes.filter(f); pads = pads.filter(f); worstjes = worstjes.filter(f); currys = currys.filter(f); hangs = hangs.filter(f); holes = holes.filter(f); wheels = wheels.filter(f); }
+  if (grew && px > 4000) { const cut = px - 1600, f = o => o.x > cut; blocks = blocks.filter(f); spikes = spikes.filter(f); pads = pads.filter(f); worstjes = worstjes.filter(f); currys = currys.filter(f); hangs = hangs.filter(f); holes = holes.filter(f); wheels = wheels.filter(f); lamps = lamps.filter(f); shelves = shelves.filter(f); flys = flys.filter(z => z.x1 > cut); }
 }
 function curSpeed() {
   if (!gen) return SPEED;
@@ -372,7 +416,8 @@ const DJ_TIME = 9, GZ_TIME = 7;
 
 function reset() {
   if (mode === 'endless') buildEndless((Math.random() * 1e9) | 0);
-  P = {x: 0, y: -PH, vy: 0, rot: 0, ground: true, padCd: 0, run: 0, boost: 0, inv: false, cur: {}, dj: 0, used2: false, gz: 0, gzT: 0};
+  P = {x: 0, y: -PH, vy: 0, rot: 0, ground: true, padCd: 0, run: 0, boost: 0, inv: false, cur: {}, dj: 0, used2: false, gz: 0, gzT: 0, fly: 0, flapCd: 0, flapA: 0};
+  for (const l of lamps) l.broken = false; for (const z of flys) for (const g of z.gates) g.broken = false;
   worstjes = worstjes.filter(k => !k.rain); for (const k of worstjes) if (k.ox !== undefined) { k.x = k.ox; k.y = k.oy; }
   particles = []; attempts++; deadTimer = 0; worstCount = 0; banked = false; banner = 0;
   for (const k of worstjes) k.got = false;
@@ -509,22 +554,56 @@ function safeAhead() {
   for (const o of hangs) if (o.x + T > a && o.x < b) return false;
   for (const o of holes) if (o.x + T > a && o.x < b) return false;
   for (const o of wheels) { const wx = wheelX(o); if (!o.broken && wx + 20 > a && wx - 20 < b) return false; }
+  for (const o of lamps) if (!o.broken && o.x + 140 > a && o.x - 140 < b) return false;
+  for (const z of flys) if (z.x1 > a && z.x0 < b) return false;
   return true;
 }
 function step(dt) {
   const prevBottom = P.y + PH, wasAir = !P.ground;
   if (gen) ensureAhead(P.x);
-  P.x += curSpeed() * (P.boost > 0 ? BOOST_MULT : 1) * dt;
-  if (held && P.ground) { P.vy = JUMP; P.ground = false; jumpPressed = false; tone(520, 880, .08, 'square', .04); }
+  const fz = flys.length ? flys.find(z => P.x + PW / 2 > z.x0 && P.x + PW / 2 < z.x1) : null;
+  if (fz && !P.fly) {
+    P.fly = 1; P.vy = Math.min(P.vy, -360); P.flapA = 1; bannerTxt = 'HOLY ROY!'; banner = 1.6; flash = .45;
+    [523, 659, 784].forEach((f, i) => tone(f, f * 1.002, .9, 'triangle', .05, i * .02)); tone(1046, 1568, .5, 'sine', .04, .1);
+    for (let i = 0; i < 16; i++) particles.push({x: P.x + PW / 2 + (Math.random() - .5) * 30, y: P.y + 10, vx: (Math.random() - .5) * 220, vy: -60 - Math.random() * 160, g: 120, life: .9, size: 4 + Math.random() * 3, col: i % 2 ? '#fff' : '#ffe9a0'});
+  } else if (!fz && P.fly) P.fly = 0;
+  P.x += (P.fly ? Math.min(curSpeed(), FLY_SPEED) : curSpeed()) * (P.boost > 0 ? BOOST_MULT : 1) * dt;
+  P.flapCd -= dt; P.flapA = Math.max(0, P.flapA - dt * 4);
+  if (P.fly) {
+    if (jumpPressed || (held && P.flapCd <= 0)) {
+      P.vy = FLAP; P.flapCd = .22; P.flapA = 1; jumpPressed = false; P.ground = false; tone(380, 620, .07, 'triangle', .04);
+      particles.push({x: P.x + 2, y: P.y + 4, vx: -90 - Math.random() * 60, vy: 30 + Math.random() * 50, g: 40, life: .6, size: 4, col: '#fff'});
+    }
+  } else if (held && P.ground) { P.vy = JUMP; P.ground = false; jumpPressed = false; tone(520, 880, .08, 'square', .04); }
   else if (jumpPressed && !P.ground && P.dj > 0 && !P.used2) { // espresso: tweede sprong in de lucht
     P.vy = JUMP * .92; P.used2 = true; jumpPressed = false; tone(700, 1400, .1, 'square', .05);
     burst(P.x + PW / 2, P.y + PH, 8, ['#fff', '#c9a27a', '#6b3e22'], 200);
   }
-  P.vy += GRAV * dt; P.y += P.vy * dt;
+  P.vy += (P.fly ? FLY_G : GRAV) * dt; if (P.fly) P.vy = Math.min(P.vy, FLY_MAXV); P.y += P.vy * dt;
+  if (P.fly && P.y - 44 < FLY_CEIL) { P.y = FLY_CEIL + 44; P.vy = Math.max(P.vy, 0); }
   P.padCd -= dt; if (P.boost > 0) P.boost -= dt; if (P.dj > 0) P.dj -= dt;
   P.ground = false;
 
   if (P.y + PH >= 0) { P.y = -PH; P.vy = 0; P.ground = true; P.used2 = false; }
+  for (const sh of shelves) {   // planken: alleen van bovenaf te betreden
+    if (sh.x > P.x + PW || sh.x + T < P.x) continue;
+    if (P.vy >= 0 && prevBottom <= sh.y + 16 && P.y + PH >= sh.y && P.x + PW > sh.x + 3 && P.x < sh.x + T - 3) { P.y = sh.y - PH; P.vy = 0; P.ground = true; P.used2 = false; }
+  }
+  for (const l of lamps) {
+    if (l.broken || l.x > P.x + PW + LAMP_R * .5 || l.x < P.x - LAMP_R * .5) continue;
+    const q = lampPos(l), cx = Math.max(P.x + 4, Math.min(q.x, P.x + PW - 4)), cy = Math.max(P.y + 4, Math.min(q.y, P.y + PH - 4));
+    if (Math.hypot(q.x - cx, q.y - cy) < 14) {
+      if (P.inv) { l.broken = true; burst(q.x, q.y, 12, ['#c9a24a', '#fff0c0', '#8a6410'], 380); tone(1400, 300, .2, 'triangle', .07); continue; }
+      return die();
+    }
+  }
+  if (P.fly && fz) for (const g of fz.gates) {
+    if (g.broken || Math.abs(g.x - (P.x + PW / 2)) > 20 + PW / 2 - 5) continue;
+    if (P.y - 8 < g.gy - g.gh / 2 || P.y + PH - 12 > g.gy + g.gh / 2) {
+      if (P.inv) { g.broken = true; burst(g.x, g.gy, 14, ['#b97a3e', '#a8431f', '#fff'], 400); tone(160, 60, .14, 'sawtooth', .07); continue; }
+      return die();
+    }
+  }
   for (const b of blocks) {
     if (b.x > P.x + PW + 2 || b.x + b.w < P.x - 2) continue;
     if (P.x + PW > b.x + 1 && P.x < b.x + b.w - 1 && P.y + PH > b.y && P.y < b.y + b.h) {
@@ -688,6 +767,13 @@ function drawCurry(c, x, y, time) {
   c.restore();
 }
 
+function drawSalamiV(c, x, y) {
+  c.save(); c.translate(x, y); c.rotate(Math.sin(x * .7 + y) * .12);
+  const g = c.createLinearGradient(-10, 0, 10, 0); g.addColorStop(0, '#c23a3f'); g.addColorStop(.5, '#8e1f24'); g.addColorStop(1, '#5c1216');
+  c.fillStyle = '#4a0f12'; rr(c, -11.5, -12, 23, 24, 10); c.fill(); c.fillStyle = g; rr(c, -10, -11, 20, 22, 9); c.fill();
+  c.fillStyle = '#f3d9cf'; for (let i = 0; i < 5; i++) c.fillRect(-6 + rnd(i + x) * 10, -7 + rnd(i + y) * 13, 2, 2);
+  c.restore();
+}
 function drawEspresso(c, x, y, time) {
   c.save(); c.translate(x, y + Math.sin(time / 180) * 3);
   const gl = c.createRadialGradient(0, 0, 4, 0, 0, 34); gl.addColorStop(0, 'rgba(255,255,255,.7)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gl; c.fillRect(-36, -36, 72, 72);
@@ -793,6 +879,19 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
   const throwLean = o.throwT > 0 ? (o.throwT > .6 ? -.18 : .22 * (o.throwT / .6)) : 0;
   const lean = (o.stand ? .04 + breath * .01 : mix(boost ? .42 : .2 + .03 * Math.sin(2 * TAU * (t - .1)), fl(-.08, .14))) + .25 * land + throwLean - (o.hurt || 0) * .35;
 
+  if (o.wings) {   // Holy Roy: engelenvleugels achter de schouders
+    const fa = o.flap || 0, wa = -.75 + 1.35 * fa * fa + Math.sin(time / 110) * .12;
+    const wing = (dx, back) => {
+      c.save(); c.translate(dx, -20); c.rotate(wa + (back ? -.25 : 0)); c.scale(o.wings, o.wings);
+      c.fillStyle = back ? '#e2dccd' : '#fffdf6'; c.strokeStyle = '#b8ac90'; c.lineWidth = 1.1;
+      c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(-14, -26, -40, -30);
+      for (let i = 0; i < 4; i++) { const px = -40 + i * 9, py = -30 + i * 9; c.quadraticCurveTo(px - 2, py + 9, px + 9, py + 9); }
+      c.quadraticCurveTo(-8, 4, 0, 0); c.closePath(); c.fill(); c.stroke();
+      c.strokeStyle = 'rgba(184,172,144,.7)'; c.beginPath(); c.moveTo(-6, -6); c.lineTo(-30, -22); c.moveTo(-6, -2); c.lineTo(-24, -10); c.stroke();
+      c.restore();
+    };
+    c.save(); c.rotate(lean); wing(4, true); wing(-2, false); c.restore();
+  }
   c.save(); c.rotate(lean); arm(t + .5, false); c.restore();     // arm aan de achterkant (zwaait mee met het voorste been)
   leg(LB, true); leg(LA, false);
   c.save(); c.rotate(lean);
@@ -862,6 +961,7 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
   c.save(); c.translate(1, -25 + bob); c.rotate(headTilt); c.translate(-1, 25 - bob);
   if (head.complete && head.naturalWidth) c.drawImage(himg, hx, hy, hw, hh);
   else { c.fillStyle = '#e8b896'; c.beginPath(); c.ellipse(0, hy + hh / 2, 20, 28, 0, 0, Math.PI * 2); c.fill(); }
+  if (o.wings) { c.save(); c.shadowColor = '#ffe14f'; c.shadowBlur = 10; c.strokeStyle = '#ffd23f'; c.lineWidth = 3.2; c.beginPath(); c.ellipse(hx + hw * .55, hy - 4 + Math.sin(time / 300) * 1.5, 15, 4.5, -.08, 0, Math.PI * 2); c.stroke(); c.restore(); }
   if (boost) { c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 2.5; for (const sx of [-18, 12]) { const q = (time / 5 + sx * 3) % 22; c.globalAlpha = 1 - q / 22; c.beginPath(); c.arc(sx, hy - 2 - q, 3 + q * .15, 0, Math.PI * 2); c.stroke(); } c.globalAlpha = 1; }
   const ox = hx + hw * .5 + 2; c.translate(ox, 0);
   const ey = hy + hh * .492, e1 = hx + hw * .607 - ox, e2 = hx + hw * .868 - ox;
@@ -1093,6 +1193,45 @@ function draw(time) {
     }
     c.restore();
   }
+  for (const sh of shelves) {   // zwevende planken aan touwen
+    if (sh.x > camX + W + 50 || sh.x + T < camX - 50) continue;
+    if (sh.first || sh.last) { c.strokeStyle = 'rgba(58,31,16,.75)'; c.lineWidth = 2; const rx = sh.first ? sh.x + 7 : sh.x + T - 7; c.beginPath(); c.moveTo(rx, sh.y); c.lineTo(rx, -groundY - 40); c.stroke(); }
+    c.fillStyle = '#3a1f10'; c.fillRect(sh.x - (sh.first ? 2 : 0), sh.y + 7, T + (sh.first ? 2 : 0) + (sh.last ? 2 : 0), 4);
+    const g = c.createLinearGradient(0, sh.y, 0, sh.y + 9); g.addColorStop(0, '#c08a50'); g.addColorStop(1, '#7a4a24');
+    c.fillStyle = g; c.fillRect(sh.x - (sh.first ? 2 : 0), sh.y, T + (sh.first ? 2 : 0) + (sh.last ? 2 : 0), 8);
+    c.fillStyle = 'rgba(255,230,190,.35)'; c.fillRect(sh.x, sh.y + 1, T, 1.5);
+    c.strokeStyle = 'rgba(58,31,16,.45)'; c.lineWidth = 1; c.beginPath(); c.moveTo(sh.x + T, sh.y + 1); c.lineTo(sh.x + T, sh.y + 7); c.stroke();
+  }
+  for (const l of lamps) {   // slingerende hanglamp
+    if (l.broken || l.x > camX + W + 160 || l.x < camX - 160) continue;
+    const q = lampPos(l), top = -groundY - 30, k = (top - LAMP_PIV) / LAMP_R;
+    c.strokeStyle = '#4a3320'; c.lineWidth = 2.2; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(l.x + (q.x - l.x) * k, top); c.lineTo(q.x, q.y - 14); c.stroke(); c.setLineDash([]);
+    c.save(); c.translate(q.x, q.y); c.rotate(-q.a);
+    const lg = c.createRadialGradient(0, 10, 2, 0, 30, 70); lg.addColorStop(0, 'rgba(255,220,140,.45)'); lg.addColorStop(1, 'rgba(255,220,140,0)');
+    c.fillStyle = lg; c.beginPath(); c.moveTo(-12, 4); c.lineTo(-44, 60); c.lineTo(44, 60); c.lineTo(12, 4); c.fill();
+    c.fillStyle = '#c9a24a'; c.strokeStyle = '#6b4a14'; c.lineWidth = 1.5; c.fillRect(-2.5, -18, 5, 6);
+    c.beginPath(); c.moveTo(-6, -12); c.quadraticCurveTo(-16, -6, -17, 6); c.lineTo(17, 6); c.quadraticCurveTo(16, -6, 6, -12); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.ellipse(-7, -3, 2.5, 6, .4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#fff6c8'; c.beginPath(); c.arc(0, 8, 5.5, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+  for (const z of flys) {   // vliegstuk: palen van boven en van onder
+    if (z.x0 > camX + W + 60 || z.x1 < camX - 60) continue;
+    for (const g of z.gates) {
+      if (g.broken || g.x > camX + W + 40 || g.x < camX - 40) continue;
+      const gt = g.gy - g.gh / 2, gb = g.gy + g.gh / 2;
+      for (let y = gb; y < 0; y += T) {   // onder: kratten op elkaar
+        const hh = Math.min(T, -y); c.fillStyle = '#b97a3e'; c.fillRect(g.x - 20, y, 40, hh);
+        c.strokeStyle = '#6b3e1c'; c.lineWidth = 3; c.strokeRect(g.x - 18.5, y + 1.5, 37, hh - 3);
+        c.fillStyle = '#9a6230'; if (hh > 16) { c.fillRect(g.x - 20, y + 13, 40, 2); c.fillRect(g.x - 20, y + 26, 40, 2); }
+      }
+      c.fillStyle = '#6b3e1c'; c.fillRect(g.x - 23, gb - 3, 46, 5);
+      c.strokeStyle = '#3a2a1c'; c.lineWidth = 3; c.beginPath(); c.moveTo(g.x, -groundY - 40); c.lineTo(g.x, gt); c.stroke();   // boven: een streng salami aan een touw
+      for (let y = gt - 18; y > -groundY - 40; y -= 26) drawSalamiV(c, g.x, y);
+      c.fillStyle = '#3a2a1c'; c.beginPath(); c.arc(g.x, gt - 2, 4, 0, Math.PI * 2); c.fill();
+    }
+  }
+  if (P && P.fly) { c.fillStyle = 'rgba(255,236,170,.12)'; c.fillRect(camX - 20, -groundY - 40, W + 40, groundY + 40); }
   for (const w of wheels) {   // rollende kaas
     if (w.broken) continue; const wx = wheelX(w); if (wx > camX + W + 60 || wx < camX - 60) continue;
     c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 2; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(wx + 26 + i * 6, -8 - i * 11); c.lineTo(wx + 44 + i * 9, -8 - i * 11); c.stroke(); }
@@ -1134,7 +1273,7 @@ function draw(time) {
       if (!(hole && sy === 0)) { c.fillStyle = `rgba(20,8,4,${.3 * k})`; c.beginPath(); c.ellipse(cx, sy + 1.5, 19 * k, 4.2 * k, 0, 0, Math.PI * 2); c.fill(); }
     }
     const fk = P.flip || 0, flip = Math.PI * 2 * (1 - fk * fk * (3 - 2 * fk));
-    drawGuy(c, P.x + PW / 2, P.y + PH, P.rot + (fk > 0 ? flip : 0), P.run, P.ground, save.skin, time, {boost: P.boost > 0, air: P.airB || 0, vy: P.vy, land: P.land || 0});
+    drawGuy(c, P.x + PW / 2, P.y + PH, P.rot + (fk > 0 ? flip : 0), P.run, P.ground, save.skin, time, {boost: P.boost > 0, air: P.airB || 0, vy: P.vy, land: P.land || 0, wings: P.fly ? 1 : 0, flap: P.flapA || 0});
     c.globalAlpha = 1;
   }
   c.restore();
