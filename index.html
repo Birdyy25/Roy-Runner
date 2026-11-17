@@ -571,6 +571,7 @@ function step(dt) {
   } else if (!fz && P.fly) P.fly = 0;
   P.x += (P.fly ? Math.min(curSpeed(), FLY_SPEED) : curSpeed()) * (P.boost > 0 ? BOOST_MULT : 1) * dt;
   P.flapCd -= dt; P.flapA = Math.max(0, P.flapA - dt * 4);
+  P.flyK = Math.max(0, Math.min(1, (P.flyK || 0) + (P.fly ? dt : -dt) * 4));   // overgang naar en van de kleine vliegende Roy
   if (P.fly) {
     if (jumpPressed || (held && P.flapCd <= 0)) {
       P.vy = FLAP; P.flapCd = .22; P.flapA = 1; jumpPressed = false; P.ground = false; tone(380, 620, .07, 'triangle', .04);
@@ -672,7 +673,9 @@ function step(dt) {
       burst(p.x + T / 2, -6, 8, ['#f2c230', '#fff'], 220);
     }
   }
+  P.vyS = (P.vyS || 0) + (P.vy - (P.vyS || 0)) * Math.min(1, dt * 7);   // afgevlakte snelheid voor de houding, zodat hij niet schokt bij elke slag
   if (P.inv && P.boost <= 0 && P.ground && safeAhead()) P.inv = false;
+  if (P.inv && P.boost <= 0 && P.fly && fz && !fz.gates.some(g => Math.abs(g.x - (P.x + PW / 2)) < 70)) P.inv = false;   // na de curry niet het hele vliegstuk blijven knipperen
 
   const tgt = P.ground ? 0 : Math.max(-0.35, Math.min(0.35, P.vy / 2600));
   P.rot += (tgt - P.rot) * Math.min(1, dt * 18);
@@ -825,7 +828,7 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
   const reach = l => 15 * Math.cos(l[0]) + 15 * Math.cos(l[1]);
   const lift = o.stand ? 0 : 6 * Math.max(0, Math.sin(2 * TAU * (t - .3125)));                                // zweefmoment tussen twee passen
   const hip = mix(Math.max(reach(LA), reach(LB)) + 3.4 + lift, 30);
-  const stv = air * Math.max(0, Math.min(1, -vy / 760));                                                      // uitrekken bij het opstijgen
+  const stv = o.noStretch ? 0 : air * Math.max(0, Math.min(1, -vy / 760));                                                      // uitrekken bij het opstijgen
   c.save(); c.translate(x, y); c.scale(sc * (1 + .15 * land - .07 * stv), sc * (1 - .15 * land + .1 * stv)); c.translate(0, -hip); c.rotate(rot);
 
   if (boost) { // vuur achter hem
@@ -882,7 +885,8 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
   const lean = (o.stand ? .04 + breath * .01 : mix(boost ? .42 : .2 + .03 * Math.sin(2 * TAU * (t - .1)), fl(-.08, .14))) + .25 * land + throwLean - (o.hurt || 0) * .35;
 
   if (o.wings) {   // Holy Roy: engelenvleugels achter de schouders
-    const fa = o.flap || 0, wa = -.75 + 1.35 * fa * fa + Math.sin(time / 110) * .12;
+    const fa = o.flap || 0, sh = fa > .8 ? (1 - fa) / .2 : fa / .8;   // snelle neerslag (3 beeldjes), dan rustig terug omhoog
+    const wa = -.75 + 1.35 * sh + Math.sin(time / 110) * .12;
     const wing = (dx, back) => {
       c.save(); c.translate(dx, -20); c.rotate(wa + (back ? -.25 : 0)); c.scale(o.wings, o.wings);
       c.fillStyle = back ? '#e2dccd' : '#fffdf6'; c.strokeStyle = '#b8ac90'; c.lineWidth = 1.1;
@@ -1276,7 +1280,8 @@ function draw(time) {
       if (!(hole && sy === 0)) { c.fillStyle = `rgba(20,8,4,${.3 * k})`; c.beginPath(); c.ellipse(cx, sy + 1.5, 19 * k, 4.2 * k, 0, 0, Math.PI * 2); c.fill(); }
     }
     const fk = P.flip || 0, flip = Math.PI * 2 * (1 - fk * fk * (3 - 2 * fk));
-    if (P.fly) drawGuy(c, P.x + PW / 2, P.y + FLY_CY + 33, P.rot, P.run, P.ground, save.skin, time, {scale: FLY_SC, air: 1, vy: P.vy, wings: 1.25, flap: P.flapA || 0, boost: P.boost > 0});
+    const fk2 = P.flyK || 0, ek = fk2 * fk2 * (3 - 2 * fk2);
+    if (fk2 > 0) drawGuy(c, P.x + PW / 2, P.y + PH, P.rot * (1 - ek) + Math.max(-.2, Math.min(.2, (P.vyS || 0) / 1800)) * ek, P.run, P.ground && !P.fly, save.skin, time, {scale: 1 - (1 - FLY_SC) * ek, air: Math.max(ek, P.airB || 0), vy: P.vyS || 0, wings: 1.25 * ek, flap: P.flapA || 0, boost: P.boost > 0, noStretch: true});
     else drawGuy(c, P.x + PW / 2, P.y + PH, P.rot + (fk > 0 ? flip : 0), P.run, P.ground, save.skin, time, {boost: P.boost > 0, air: P.airB || 0, vy: P.vy, land: P.land || 0, wings: P.fly ? 1 : 0, flap: P.flapA || 0});
     c.globalAlpha = 1;
   }
