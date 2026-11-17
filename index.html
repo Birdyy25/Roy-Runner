@@ -316,6 +316,8 @@ let blocks = [], spikes = [], pads = [], currys = [], worstjes = [], hangs = [],
 const LAMP_R = 292, LAMP_PIV = -26 - LAMP_R, LAMP_A = .42, LAMP_L = 520;   // slingerende lamp: laagste punt 26 boven de vloer
 function lampPos(l) { const a = LAMP_A * Math.sin((l.x - P.x) * 2 * Math.PI / LAMP_L); return {a, x: l.x + LAMP_R * Math.sin(a), y: LAMP_PIV + LAMP_R * Math.cos(a)}; }
 const FLY_CEIL = -284, FLY_SPEED = 370; let FLY_G = 1100, FLAP = -300, FLY_MAXV = 400;
+// in het vliegstuk is Roy kleiner: tekening op 55%, botsingsvak rond zijn midden
+const FLY_SC = .55, FLY_CY = 21, FLY_HH = 21, FLY_HW = 11;
 const ROLL = .45, ROLL_FROM = 700;
 const wheelX = w => w.x - ROLL * Math.max(0, P.x - (w.x - ROLL_FROM));
 let tileCur = 0, curryId = 0, gen = null, themeFrom = null, themeT = 0;
@@ -370,10 +372,10 @@ function buildEndless(seed) {
   ensureAhead(0);
 }
 function appendFlappy(n) {   // Holy Roy: een stuk vliegen tussen palen door
-  const lv = Math.min(1, n / 20), x0 = (tileCur + 3) * T, gates = [], cnt = 5 + Math.round(lv * 3), spc = 290 - lv * 40, gh = 168 - lv * 20;
-  let gy = -gh / 2 - 20 - gen.r() * 30;   // eerste opening laag, zodat je vanaf de grond op tijd omhoog komt
+  const lv = Math.min(1, n / 20), x0 = (tileCur + 3) * T, gates = [], cnt = 6 + Math.round(lv * 4), spc = 270 - lv * 45, gh = 144 - lv * 22;
+  let gy = -gh / 2 - 16 - gen.r() * 30;   // eerste opening laag, zodat je vanaf de grond op tijd omhoog komt
   for (let i = 0; i < cnt; i++) {
-    if (i) gy = Math.max(FLY_CEIL + gh / 2 + 14, Math.min(-gh / 2 - 8, gy + (gen.r() * 2 - 1) * 62));
+    if (i) gy = Math.max(FLY_CEIL + gh / 2 + 14, Math.min(-gh / 2 - 8, gy + (gen.r() * 2 - 1) * 68));
     const x = x0 + 300 + i * spc; gates.push({x, gy, gh});
     worstjes.push({x, y: gy});
     if (i) worstjes.push({x: x - spc / 2, y: (gy + gates[i - 1].gy) / 2});
@@ -580,7 +582,7 @@ function step(dt) {
     burst(P.x + PW / 2, P.y + PH, 8, ['#fff', '#c9a27a', '#6b3e22'], 200);
   }
   P.vy += (P.fly ? FLY_G : GRAV) * dt; if (P.fly) P.vy = Math.min(P.vy, FLY_MAXV); P.y += P.vy * dt;
-  if (P.fly && P.y - 44 < FLY_CEIL) { P.y = FLY_CEIL + 44; P.vy = Math.max(P.vy, 0); }
+  if (P.fly && P.y - 12 < FLY_CEIL) { P.y = FLY_CEIL + 12; P.vy = Math.max(P.vy, 0); }
   P.padCd -= dt; if (P.boost > 0) P.boost -= dt; if (P.dj > 0) P.dj -= dt;
   P.ground = false;
 
@@ -598,8 +600,8 @@ function step(dt) {
     }
   }
   if (P.fly && fz) for (const g of fz.gates) {
-    if (g.broken || Math.abs(g.x - (P.x + PW / 2)) > 20 + PW / 2 - 5) continue;
-    if (P.y - 8 < g.gy - g.gh / 2 || P.y + PH - 12 > g.gy + g.gh / 2) {
+    if (g.broken || Math.abs(g.x - (P.x + PW / 2)) > 20 + FLY_HW) continue;
+    if (P.y + FLY_CY - FLY_HH < g.gy - g.gh / 2 || P.y + FLY_CY + FLY_HH > g.gy + g.gh / 2) {
       if (P.inv) { g.broken = true; burst(g.x, g.gy, 14, ['#b97a3e', '#a8431f', '#fff'], 400); tone(160, 60, .14, 'sawtooth', .07); continue; }
       return die();
     }
@@ -1226,9 +1228,10 @@ function draw(time) {
         c.fillStyle = '#9a6230'; if (hh > 16) { c.fillRect(g.x - 20, y + 13, 40, 2); c.fillRect(g.x - 20, y + 26, 40, 2); }
       }
       c.fillStyle = '#6b3e1c'; c.fillRect(g.x - 23, gb - 3, 46, 5);
-      c.strokeStyle = '#3a2a1c'; c.lineWidth = 3; c.beginPath(); c.moveTo(g.x, -groundY - 40); c.lineTo(g.x, gt); c.stroke();   // boven: een streng salami aan een touw
-      for (let y = gt - 18; y > -groundY - 40; y -= 26) drawSalamiV(c, g.x, y);
-      c.fillStyle = '#3a2a1c'; c.beginPath(); c.arc(g.x, gt - 2, 4, 0, Math.PI * 2); c.fill();
+      // boven: twee strengen salami aan een houten rek, even breed als de kratten
+      c.fillStyle = '#5a3219'; c.fillRect(g.x - 20, gt - 6, 40, 6); c.fillStyle = 'rgba(255,220,170,.25)'; c.fillRect(g.x - 20, gt - 6, 40, 1.5);
+      c.strokeStyle = '#3a2a1c'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(g.x - 10, -groundY - 40); c.lineTo(g.x - 10, gt - 6); c.moveTo(g.x + 10, -groundY - 40); c.lineTo(g.x + 10, gt - 6); c.stroke();
+      for (let y = gt - 20, k = 0; y > -groundY - 40; y -= 24, k++) { drawSalamiV(c, g.x - 10, y - (k % 2) * 6); drawSalamiV(c, g.x + 10, y - ((k + 1) % 2) * 6); }
     }
   }
   if (P && P.fly) { c.fillStyle = 'rgba(255,236,170,.12)'; c.fillRect(camX - 20, -groundY - 40, W + 40, groundY + 40); }
@@ -1273,7 +1276,8 @@ function draw(time) {
       if (!(hole && sy === 0)) { c.fillStyle = `rgba(20,8,4,${.3 * k})`; c.beginPath(); c.ellipse(cx, sy + 1.5, 19 * k, 4.2 * k, 0, 0, Math.PI * 2); c.fill(); }
     }
     const fk = P.flip || 0, flip = Math.PI * 2 * (1 - fk * fk * (3 - 2 * fk));
-    drawGuy(c, P.x + PW / 2, P.y + PH, P.rot + (fk > 0 ? flip : 0), P.run, P.ground, save.skin, time, {boost: P.boost > 0, air: P.airB || 0, vy: P.vy, land: P.land || 0, wings: P.fly ? 1 : 0, flap: P.flapA || 0});
+    if (P.fly) drawGuy(c, P.x + PW / 2, P.y + FLY_CY + 33, P.rot, P.run, P.ground, save.skin, time, {scale: FLY_SC, air: 1, vy: P.vy, wings: 1.25, flap: P.flapA || 0, boost: P.boost > 0});
+    else drawGuy(c, P.x + PW / 2, P.y + PH, P.rot + (fk > 0 ? flip : 0), P.run, P.ground, save.skin, time, {boost: P.boost > 0, air: P.airB || 0, vy: P.vy, land: P.land || 0, wings: P.fly ? 1 : 0, flap: P.flapA || 0});
     c.globalAlpha = 1;
   }
   c.restore();
