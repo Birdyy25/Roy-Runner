@@ -1771,7 +1771,16 @@ async function loadOnline() {
   try {
     await Promise.all([pushBest('endless'), pushBest('boss')]);
     const [a, b] = await Promise.all([netFetch(`${DB_URL}/best/endless.json`), netFetch(`${DB_URL}/best/boss.json`)]);
-    const list = (o, asc) => Object.keys(o || {}).map(k => Object.assign({id: k}, o[k])).filter(e => e && typeof e.v === 'number' && typeof e.n === 'string').sort((p, q) => asc ? p.v - q.v : q.v - p.v).slice(0, 25);
+    const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
+      const best = new Map(), me = myId();
+      for (const k of Object.keys(o || {})) {
+        const e = Object.assign({id: k}, o[k]); if (!e || typeof e.v !== 'number' || typeof e.n !== 'string') continue;
+        const key = e.n.trim().toLowerCase(); if (!key) continue;
+        const cur = best.get(key), better = !cur || (asc ? e.v < cur.v : e.v > cur.v) || (e.v === cur.v && k === me);
+        if (better) best.set(key, Object.assign(e, {mine: (cur && cur.mine) || k === me})); else if (k === me) cur.mine = true;
+      }
+      return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v).slice(0, 25);
+    };
     online = {endless: list(a, false), boss: list(b, true)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
@@ -1793,10 +1802,10 @@ function renderBoard() {
   if (document.activeElement !== $('nameIn') && KB.target !== $('nameIn')) $('nameIn').value = save.name || '';
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === boardTab));
   $('scopeBtn').textContent = boardScope === 'online' ? 'Iedereen' : 'Dit toestel';
-  $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per speler';
+  $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per naam';
   el.innerHTML = L.length ? '' : `<div class="empty">${boardTab === 'endless' ? 'Nog geen afstanden. Ga rennen!' : 'Rodina is nog niet verslagen.'}</div>`;
   L.slice(0, useOnline ? 25 : 10).forEach((e, i) => {
-    const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.id === save.pid : e === lastScore) ? ' new' : '');
+    const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.mine : e === lastScore) ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = e.n;
     r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm);
     const dt = useOnline ? (e.t ? new Date(e.t).toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'}) : '') : (e.d || '');
