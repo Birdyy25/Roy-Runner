@@ -217,7 +217,10 @@ const SKINS = [
   {id: 'worst',   name: 'Meneer Worst', cost: 3000, shirt: '#a8431f', pants: '#7a2f14', shoes: '#5a2412', arm: '#a8431f'},
   {id: 'oro',     name: 'Gouden Roy',   cost: 5000, shirt: '#e8b923', pants: '#c9971a', shoes: '#8a6410', arm: '#f2cf5a'},
 ];
-const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
+const ONESIES = {};   // gekleurde onesies voor Knokken online: iedere speler zijn eigen kleur
+function shade(hex, k) { const n = parseInt(hex.slice(1), 16), f = v => Math.max(0, Math.min(255, Math.round(k < 0 ? v * (1 + k) : v + (255 - v) * k))); return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(v => f(v).toString(16).padStart(2, '0')).join(''); }
+function onesieSkin(col) { return ONESIES[col] || (ONESIES[col] = {id: 'onesie', name: 'Onesie', cost: 0, shirt: col, pants: col, arm: col, shoes: shade(col, -.45), col, light: shade(col, .45)}); }
+const skinById = id => (id && id.startsWith('onesie:')) ? onesieSkin(id.slice(7)) : (SKINS.find(s => s.id === id) || SKINS[0]);
 
 // ================= Levels =================
 const T = 40, SPEED = 330, GRAV = 2600, JUMP = -760, PAD = -1060;
@@ -942,6 +945,9 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
   } else if (s.id === 'don') {
     c.fillStyle = '#fff'; c.beginPath(); c.moveTo(-4, ty + 1); c.lineTo(4, ty + 1); c.lineTo(0, ty + 11); c.fill();
     c.fillStyle = '#b0222b'; c.beginPath(); c.moveTo(-1.5, ty + 2); c.lineTo(1.5, ty + 2); c.lineTo(2, ty + 10); c.lineTo(0, ty + 12); c.lineTo(-2, ty + 10); c.fill();
+  } else if (s.id === 'onesie') {  // rits, buikvlak en boordjes
+    c.fillStyle = s.light; c.globalAlpha = .55; c.beginPath(); c.ellipse(2, ty + 12, 5.5, 6.5, 0, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+    c.fillStyle = 'rgba(255,255,255,.75)'; c.fillRect(-.7, ty + 1, 1.4, 17.5); c.fillRect(-1.6, ty + 1, 3.2, 2.2);
   } else if (s.id === 'punk') {   // leren jack open over een wit shirt, met studs
     c.fillStyle = '#e9e4d8'; c.fillRect(-3.5, ty + 1, 7, 18);
     c.fillStyle = '#d3161b'; c.beginPath(); for (let k = 0; k < 5; k++) { const a = -Math.PI / 2 + k * Math.PI * .8; c.lineTo(Math.cos(a) * 2.8, ty + 8 + Math.sin(a) * 2.2); } c.fill();
@@ -994,6 +1000,11 @@ function drawGuy(c, x, y, rot, run, ground, skinId, time, o = {}) {
     c.fillStyle = '#f2c230'; c.strokeStyle = '#8a6410'; c.lineWidth = 1.2;
     c.beginPath(); c.moveTo(-15, hy + 8); c.lineTo(-17, hy - 8); c.lineTo(-8, hy); c.lineTo(-1, hy - 12); c.lineTo(6, hy); c.lineTo(15, hy - 8); c.lineTo(13, hy + 8); c.closePath(); c.fill(); c.stroke();
     c.fillStyle = '#d3161b'; c.beginPath(); c.arc(-1, hy + 2, 2.2, 0, Math.PI * 2); c.fill();
+  } else if (s.id === 'onesie') {   // capuchon met oortjes in dezelfde kleur
+    for (const [ex2, ey2] of [[-hw * .2, hy + 6], [hw * .27, hy + 3]]) {
+      c.fillStyle = s.col; c.strokeStyle = s.shoes; c.lineWidth = 1.4; c.beginPath(); c.arc(ex2, ey2, 8.5, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.fillStyle = s.light; c.beginPath(); c.arc(ex2, ey2 + 1, 4.2, 0, Math.PI * 2); c.fill();
+    }
   } else if (s.id === 'azzurri') {   // hoofdband in groen-wit-rood, met knoop achter
     const by = ey - 22;
     c.fillStyle = '#b0222b'; c.strokeStyle = '#3a2216'; c.lineWidth = .8; c.beginPath(); c.moveTo(-19, by + 1); c.lineTo(-29, by + 6); c.lineTo(-27, by + 10); c.lineTo(-19, by + 5); c.fill(); c.stroke();
@@ -1938,23 +1949,23 @@ const BR_SHORT = {glizzy: 'GLIZZY', glass: 'GLAZEN', bomb: 'BOM', pizza: 'PIZZA'
 const BR_TYPES = ['glizzy', 'glass', 'bomb', 'pizza', 'curry'];
 const brTouches = new Map(), brKeys = new Set(), brLatch = {};   // brLatch: knoppen die kort zijn aangetikt, zodat een snelle tik nooit wordt gemist
 function brStage() { return {main: {x1: W * .16, x2: W * .84, y: H * .7}, soft: [{x1: W * .2, x2: W * .38, y: H * .47}, {x1: W * .62, x2: W * .8, y: H * .47}, {x1: W * .41, x2: W * .59, y: H * .26}]}; }
-const BR_COLS = ['#2f7fe0', '#e0301e', '#2fae5a', '#f2c230', '#b05ae0', '#ff8a3a'];
+const BR_COLS = ['#2f7fe0', '#e0301e', '#2fae5a', '#f2c230', '#b05ae0', '#ff8a3a'], BR_COLNAMES = ['Blauw', 'Rood', 'Groen', 'Geel', 'Paars', 'Oranje'];
 function brSpawn(i) { const st = brStage(), sp = [[.3, st.main.y], [.7, st.main.y], [.5, st.soft[2].y], [.29, st.soft[0].y], [.71, st.soft[1].y], [.5, st.main.y]][i % 6]; return {x: W * sp[0], y: sp[1]}; }
 function brMake(i, o) {
   const sp = brSpawn(i);
-  return Object.assign({i, id: 'f' + i, cpu: false, remote: false, x: sp.x, y: sp.y, vx: 0, vy: 0, face: sp.x > W / 2 ? -1 : 1, ground: true, jumps: 2, dmg: 0, stocks: 3, stun: 0, atk: 0, atkHit: false, aSeq: 0, inv: 1.6, hold: null,
-    burn: 0, burnT: 0, slow: 0, curry: 0, run: 0, airB: 0, land: 0, thr: 0, dead: 0, spin: 0, skin: 'roy', name: 'P' + (i + 1), col: BR_COLS[i % 6], ai: {t: .6, jump: 0}, prev: {}}, o);
+  return Object.assign({i, id: 'f' + i, cpu: false, remote: false, x: sp.x, y: sp.y, vx: 0, vy: 0, face: sp.x > W / 2 ? -1 : 1, ground: true, jumps: 2, hp: 100, hurtT: 0, cHit: 0, stocks: 3, stun: 0, atk: 0, atkHit: false, aSeq: 0, inv: 1.6, hold: null,
+    burn: 0, burnT: 0, slow: 0, curry: 0, run: 0, airB: 0, land: 0, thr: 0, dead: 0, spin: 0, skin: 'onesie:' + BR_COLS[i % 6], name: 'P' + (i + 1), col: BR_COLS[i % 6], ai: {t: .6, jump: 0}, prev: {}}, o);
 }
 function startBrawl(n) {   // 0 = computer tegen computer, 1 = tegen de computer, 2 = twee spelers op één toestel
   theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear();
   const pool = SKINS.map(s => s.id).sort(() => Math.random() - .5);   // iedereen een willekeurige Roy
-  const f = [brMake(0, {cpu: n === 0, skin: pool[0], name: n === 0 ? 'CPU 1' : 'P1'}), brMake(1, {cpu: n !== 2, skin: pool[1], name: n === 2 ? 'P2' : n === 0 ? 'CPU 2' : 'CPU'})];
+  const f = [brMake(0, {cpu: n === 0, name: n === 0 ? 'CPU 1' : 'P1'}), brMake(1, {cpu: n !== 2, name: n === 2 ? 'P2' : n === 0 ? 'CPU 2' : 'CPU'})];
   BR = {n, mode: n === 2 ? 'local2' : 'cpu', f, local: n === 2 ? [0, 1] : n === 1 ? [0] : [], fx: [], crates: [], crateT: 3.5, t: 0, intro: 1.8, winner: -1, shown: false, dt: 0, stage: brStage()};
   state = 'play'; deadTimer = 0;
 }
 function startBrawlOnline(order) {
   theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear();
-  const f = order.map((pid, i) => { const pl = ON.players[pid] || {}; return brMake(i, {id: pid, remote: pid !== ON.pid, skin: pl.skin || 'roy', name: (pl.n || 'Roy').slice(0, 12), gone: !ON.players[pid]}); });
+  const f = order.map((pid, i) => { const pl = ON.players[pid] || {}; return brMake(i, {id: pid, remote: pid !== ON.pid, name: (pl.n || 'Roy').slice(0, 12), gone: !ON.players[pid]}); });
   const me = f.findIndex(q => q.id === ON.pid);
   BR = {n: 1, mode: 'online', f, local: me >= 0 ? [me] : [], me, fx: [], crates: [], crateT: 4, t: 0, intro: 2.2, winner: -1, shown: false, dt: 0, stage: brStage(), overT: 0, seen: {}};
   mode = 'brawl'; state = 'play'; deadTimer = 0; showView(null); $('pauseBtn').style.display = 'flex';
@@ -1998,22 +2009,25 @@ function brAI(f, o) {
 }
 function brHit(o, dmg, base, scale, dx, dy) {
   if (o.remote || o.inv > 0 || o.dead > 0 || o.stocks <= 0) return false;
-  o.dmg += dmg; let kb = base + o.dmg * scale; if (o.curry > 0) kb *= .3;
+  const d = o.curry > 0 ? dmg * .5 : dmg;
+  o.hp = Math.max(0, o.hp - d); o.hurtT = .35;
+  let kb = base * (1 + (100 - o.hp) / 100 * .9); if (o.curry > 0) kb *= .25;   // met weinig leven vlieg je verder weg
   const L = Math.hypot(dx, dy) || 1; o.vx = dx / L * kb; o.vy = dy / L * kb; o.stun = Math.min(.95, .16 + kb / 2500); o.ground = false; o.spin = (dx >= 0 ? 1 : -1) * Math.min(14, kb / 60);
   shake = Math.max(shake, Math.min(16, 4 + kb / 60)); tone(200, 70, .12, 'sawtooth', .08);
-  burst(o.x, o.y - 22, 6, ['#fff', '#ffe14f', o.col], 260); popText(Math.round(o.dmg) + '%', o.x, o.y - 70, o.dmg > 100 ? '#ff6a4a' : '#fff', 15);
+  burst(o.x, o.y - 22, 8, ['#fff', '#ffe14f', o.col], 300); popText('-' + Math.round(d), o.x, o.y - 70, d >= 15 ? '#ff4a3a' : '#fff', d >= 15 ? 22 : 16);
+  if (o.hp <= 0) brKO(o, true);
   return true;
 }
 function brSpawnFx(ty, f, tgt) {   // maakt het effect aan; online krijgt iedereen dezelfde beginwaarden
   if (ty === 'glizzy') return {k: 'glizzy', o: f.id, x: f.x + f.face * 14, y: f.y - 34, vx: f.face * 330 + f.vx * .3, vy: -330, t: 1.1};
-  if (ty === 'glass') return {k: 'rain', o: f.id, t: 4, n: 0, tg: tgt ? tgt.id : ''};
+  if (ty === 'glass') return {k: 'rain', o: f.id, t: 5, n: 0, tg: tgt ? tgt.id : ''};
   if (ty === 'bomb') return {k: 'bomb', o: f.id, x: f.x, y: f.y - 2, vy: 0, t: 1.7};
-  if (ty === 'pizza') return {k: 'pizza', o: f.id, x: f.x + f.face * 16, y: f.y - 28, vx: f.face * 520, t: 1.4, sm: 0, rot: 0, y0: f.y - 28};
+  if (ty === 'pizza') return {k: 'pizza', o: f.id, x: f.x + f.face * 16, y: f.y - 28, vx: f.face * 640, t: 1.4, sm: 0, rot: 0, y0: f.y - 28};
   return null;
 }
 function brUse(f) {
   const ty = f.hold; f.hold = null; f.thr = 1; bannerTxt = BR_NAMES[ty]; banner = 1.5; tone(300, 1200, .3, 'square', .07);
-  if (ty === 'curry') { f.curry = 5.5; flash = .5; }
+  if (ty === 'curry') { f.curry = 6.5; flash = .5; shake = Math.max(shake, 8); burst(f.x, f.y - 30, 26, ['#ff7a1a', '#ffd23f', '#e0301e'], 420); }
   const e = brSpawnFx(ty, f, brNearest(f)); if (e) BR.fx.push(e);
   if (BR.mode === 'online') onlineEvent({e: 'use', ty, fx: e});
 }
@@ -2027,7 +2041,7 @@ function brRemote(f, dt) {   // andere spelers: volg hun laatst gemelde positie
   if (!s2) return;
   const age = Math.min(.18, (performance.now() - f.netAt) / 1000), tx = (s2.x + s2.vx * age) * W, ty = (s2.y + s2.vy * age) * H, k = Math.min(1, dt * 16);
   if (Math.abs(tx - f.x) > 220 || Math.abs(ty - f.y) > 220) { f.x = tx; f.y = ty; } else { f.x += (tx - f.x) * k; f.y += (ty - f.y) * k; }
-  f.vx = s2.vx * W; f.vy = s2.vy * H; f.face = s2.f; f.ground = !!s2.g; f.dmg = s2.d; f.stocks = s2.k; f.stun = s2.st ? .2 : 0; f.hold = s2.h || null; f.dead = s2.dd ? .2 : 0; f.inv = s2.iv ? .2 : 0;
+  f.vx = s2.vx * W; f.vy = s2.vy * H; f.face = s2.f; f.ground = !!s2.g; if (s2.d < f.hp) f.hurtT = .35; f.hp = s2.d; f.stocks = s2.k; f.stun = s2.st ? .2 : 0; f.hold = s2.h || null; f.dead = s2.dd ? .2 : 0; f.inv = s2.iv ? .2 : 0;
   f.curry = s2.cu ? .2 : 0; f.burn = s2.bu ? .2 : 0; f.slow = s2.sl ? .2 : 0; f.spin = s2.sp || 0;
   if (s2.a !== f.aSeq) { f.aSeq = s2.a; f.atk = .3; f.atkHit = false; f.thr = 1; }
   f.run += dt * (f.ground ? Math.abs(f.vx) / 13 : 5); f.airB += ((f.ground ? 0 : 1) - f.airB) * Math.min(1, dt * 22);
@@ -2037,15 +2051,15 @@ function brFighter(f, dt) {
   if (f.remote) return brRemote(f, dt);
   if (f.stocks <= 0) return;
   const st = BR.stage, o = brNearest(f);
-  f.inv -= dt; f.land = Math.max(0, f.land - dt * 5.5); f.thr = Math.max(0, f.thr - dt * 4.5); f.curry -= dt; f.slow -= dt;
+  f.inv -= dt; f.land = Math.max(0, f.land - dt * 5.5); f.thr = Math.max(0, f.thr - dt * 4.5); f.curry -= dt; f.slow -= dt; f.hurtT -= dt; f.cHit -= dt;
   if (f.dead > 0) {
     f.dead -= dt;
-    if (f.dead <= 0) { f.x = W / 2 + (f.i ? 36 : -36); f.y = st.soft[2].y - 70; f.vx = f.vy = 0; f.dmg = 0; f.inv = 2.2; f.stun = 0; f.jumps = 1; f.spin = 0; }
+    if (f.dead <= 0) { f.x = W / 2 + (f.i ? 36 : -36); f.y = st.soft[2].y - 70; f.vx = f.vy = 0; f.hp = 100; f.inv = 2.2; f.stun = 0; f.jumps = 1; f.spin = 0; }
     return;
   }
-  if (f.burn > 0) { f.burn -= dt; f.burnT -= dt; if (f.burnT <= 0) { f.burnT = .5; f.dmg += 2; particles.push({x: f.x + (Math.random() - .5) * 16, y: f.y - 30, vx: 0, vy: -80, g: -100, life: .5, size: 6, col: '#ff7a1a'}); } }
+  if (f.burn > 0) { f.burn -= dt; f.burnT -= dt; if (f.burnT <= 0) { f.burnT = .5; f.hp = Math.max(0, f.hp - 3); f.hurtT = .2; if (f.hp <= 0) { brKO(f, true); return; } particles.push({x: f.x + (Math.random() - .5) * 16, y: f.y - 30, vx: 0, vy: -80, g: -100, life: .5, size: 6, col: '#ff7a1a'}); } }
   const inp = BR.intro > 0 || state !== 'play' ? {} : f.cpu ? brAI(f, o) : brInput(f.i), jp = inp.j && !f.prev.j, ap = inp.a && !f.prev.a; f.prev = inp;
-  const can = f.stun <= 0, sp = 235 * (f.curry > 0 ? 1.45 : 1) * (f.slow > 0 ? .55 : 1);
+  const can = f.stun <= 0, sp = 235 * (f.curry > 0 ? 1.6 : 1) * (f.slow > 0 ? .5 : 1);
   if (can) {
     const want = (inp.r ? 1 : 0) - (inp.l ? 1 : 0), acc = (f.ground ? 2600 : 1400) * dt, d = want * sp - f.vx;
     f.vx += Math.max(-acc, Math.min(acc, d)); if (want && f.atk <= 0) f.face = want;
@@ -2062,20 +2076,28 @@ function brFighter(f, dt) {
   }
   if (f.atk > 0) f.atk -= dt;
   f.run += dt * (f.ground ? Math.abs(f.vx) / 13 : 5); f.airB += ((f.ground ? 0 : 1) - f.airB) * Math.min(1, dt * 22);
-  if (f.x < -90 || f.x > W + 90 || f.y > H + 130 || f.y < -300) {   // uit het beeld geslagen
-    f.stocks--; f.dead = 1.2; f.hold = null; f.burn = f.slow = f.curry = 0; f.stun = 0;
-    const kx = Math.max(30, Math.min(W - 30, f.x)), ky = Math.max(30, Math.min(H - 30, f.y));
-    for (let i = 0; i < 40; i++) { const an = Math.atan2(H / 2 - ky, W / 2 - kx) + (Math.random() - .5) * 1.1, s2 = 200 + Math.random() * 600; particles.push({x: kx, y: ky, vx: Math.cos(an) * s2, vy: Math.sin(an) * s2, g: 0, life: .5 + Math.random() * .4, size: 5 + Math.random() * 7, col: [f.col, '#fff', '#ffe14f'][i % 3]}); }
-    shake = 18; flash = .7; tone(500, 60, .5, 'sawtooth', .12); popText('UIT!', kx, Math.max(60, ky - 20), '#ffe14f', 30);
-    if (BR.mode === 'online') ON.sendT = 0;
-  }
+  if (f.x < -90 || f.x > W + 90 || f.y > H + 130 || f.y < -300) brKO(f, false);   // uit het beeld geslagen
+}
+function brKO(f, hpOut) {   // een leven kwijt: door de levensbalk leeg te slaan of uit beeld te vliegen
+  if (f.dead > 0) return;
+  f.stocks--; f.dead = 1.2; f.hold = null; f.burn = f.slow = f.curry = 0; f.stun = 0;
+  const kx = Math.max(30, Math.min(W - 30, f.x)), ky = Math.max(30, Math.min(H - 30, hpOut ? f.y - 30 : f.y));
+  for (let i = 0; i < 46; i++) { const an = hpOut ? Math.random() * Math.PI * 2 : Math.atan2(H / 2 - ky, W / 2 - kx) + (Math.random() - .5) * 1.1, s2 = 200 + Math.random() * 600; particles.push({x: kx, y: ky, vx: Math.cos(an) * s2, vy: Math.sin(an) * s2, g: 0, life: .5 + Math.random() * .4, size: 5 + Math.random() * 7, col: [f.col, '#fff', '#ffe14f'][i % 3]}); }
+  if (hpOut) particles.push({head: 1, x: f.x, y: f.y - 60, vx: (Math.random() - .5) * 200, vy: -560, r: 0, vr: 8, life: 1.4});
+  shake = 18; flash = .7; tone(500, 60, .5, 'sawtooth', .12); popText(hpOut ? 'KO!' : 'UIT!', kx, Math.max(60, ky - 20), '#ffe14f', 30);
+  if (BR.mode === 'online') ON.sendT = 0;
 }
 function brMelee() {   // wie geraakt wordt, wordt altijd op zijn eigen toestel uitgerekend
   for (const a of BR.f) {
     if (a.atk <= 0 || a.atkHit || a.gone) continue; const t = .34 - a.atk; if (t < .07 || t > .2) continue;
-    for (const v of BR.f) if (v !== a && !v.remote && brAlive(v) && Math.abs(v.x - (a.x + a.face * 30)) < 34 && Math.abs(v.y - a.y) < 46) { if (brHit(v, 7 * (a.curry > 0 ? 1.5 : 1), 175 * (a.curry > 0 ? 1.35 : 1), 6.2, a.face, -.75)) a.atkHit = true; }
+    for (const v of BR.f) if (v !== a && !v.remote && brAlive(v) && Math.abs(v.x - (a.x + a.face * 30)) < 34 && Math.abs(v.y - a.y) < 46) { if (brHit(v, 8 * (a.curry > 0 ? 2 : 1), 165 * (a.curry > 0 ? 1.4 : 1), 0, a.face, -.75)) a.atkHit = true; }
     for (const v of BR.f) if (v !== a && v.remote && !a.remote && brAlive(v) && !a.atkHit && Math.abs(v.x - (a.x + a.face * 30)) < 34 && Math.abs(v.y - a.y) < 46) { a.atkHit = true; burst(v.x, v.y - 22, 5, ['#fff', '#ffe14f'], 220); tone(200, 70, .1, 'sawtooth', .06); }
   }
+}
+function brCurryTouch() {   // met de curry verbrand je iedereen die je aanraakt
+  for (const a of BR.f) { if (a.curry <= 0 || !brAlive(a)) continue;
+    for (const v of BR.f) if (v !== a && !v.remote && brAlive(v) && v.cHit <= 0 && Math.abs(v.x - a.x) < 28 && Math.abs(v.y - a.y) < 46) {
+      v.cHit = .5; if (brHit(v, 6, 250, 0, Math.sign(v.x - a.x) || a.face, -.6)) { v.burn = Math.max(v.burn, 1.5); burst(v.x, v.y - 30, 10, ['#ff7a1a', '#ffd23f'], 260); } } }
 }
 function brCheckWin() {
   if (BR.winner >= 0 || BR.intro > 0) return;
@@ -2089,7 +2111,8 @@ function brCheckWin() {
 function brExplode(x, y, r, owner, dmg, base, scale, cols, self) {
   for (const o of BR.f) { if (o.dead > 0 || o.gone) continue; const own = o.id === owner; if (own && !self) continue;
     const d = Math.hypot(o.x - x, o.y - 20 - y); if (d < r) brHit(o, own ? dmg * .45 : dmg, own ? base * .6 : base, own ? scale * .5 : scale, (o.x - x) || (Math.random() - .5), -Math.abs(o.y - 20 - y) - r * .8); }
-  burst(x, y, 22, cols, 460); shake = Math.max(shake, 12); flash = Math.max(flash, .45); tone(140, 40, .35, 'sawtooth', .12);
+  burst(x, y, 40, cols, 560); shake = Math.max(shake, 14 + r / 20); flash = Math.max(flash, .5); tone(140, 40, .4, 'sawtooth', .13); tone(70, 30, .5, 'square', .08);
+  BR.fx.push({k: 'ring', x, y, R: r * 1.15, t: .4, T: .4, col: cols[0]}, {k: 'ring', x, y, R: r * .7, t: .3, T: .3, col: '#fff'});
 }
 function brEffects(dt) {
   const st = BR.stage, plats = [st.main].concat(st.soft);
@@ -2099,29 +2122,31 @@ function brEffects(dt) {
     if (e.k === 'glizzy') {
       const py = e.y; e.vy += 900 * dt; e.x += e.vx * dt; e.y += e.vy * dt; e.t -= dt;
       if (e.t <= 0 || onPlat(e.x, e.y, py) || foes.some(o => Math.hypot(o.x - e.x, o.y - 22 - e.y) < 28)) {
-        e.dead = true; brExplode(e.x, e.y - 6, 62, e.o, 12, 240, 5.4, ['#e0763a', '#f2c230', '#a8431f']);
-        for (let k = 0; k < 8; k++) { const an = k * Math.PI / 4 + .2; BR.fx.push({k: 'mini', o: e.o, x: e.x, y: e.y - 8, vx: Math.cos(an) * 340, vy: Math.sin(an) * 340 - 70, t: .55, rot: an}); }
+        e.dead = true; brExplode(e.x, e.y - 6, 95, e.o, 22, 300, 0, ['#e0763a', '#f2c230', '#a8431f']);
+        for (let k = 0; k < 10; k++) { const an = k * Math.PI / 5 + .2; BR.fx.push({k: 'mini', o: e.o, x: e.x, y: e.y - 8, vx: Math.cos(an) * 430, vy: Math.sin(an) * 430 - 90, t: .6, rot: an}); }
       }
     } else if (e.k === 'mini') {
       e.vy += 500 * dt; e.x += e.vx * dt; e.y += e.vy * dt; e.t -= dt; e.rot += dt * 14; if (e.t <= 0) e.dead = true;
-      for (const o of foes) if (!e.dead && Math.hypot(o.x - e.x, o.y - 22 - e.y) < 22) { brHit(o, 5, 125, 2.4, Math.sign(e.vx) || 1, -.5); e.dead = true; }
+      for (const o of foes) if (!e.dead && Math.hypot(o.x - e.x, o.y - 22 - e.y) < 22) { brHit(o, 7, 150, 0, Math.sign(e.vx) || 1, -.5); e.dead = true; }
     } else if (e.k === 'rain') {
       e.t -= dt; e.n -= dt; if (e.t <= 0) e.dead = true;
-      if (e.n <= 0) { e.n = .15; const tg = foes.find(o => o.id === e.tg) || foes[0]; if (tg) BR.fx.push({k: 'glass', o: e.o, x: tg.x + (Math.random() - .5) * 300, y: -24, vy: 430 + Math.random() * 140, rot: Math.random() * 6}); }
+      if (e.n <= 0) { e.n = .1; const tg = foes.find(o => o.id === e.tg) || foes[0]; if (tg) BR.fx.push({k: 'glass', o: e.o, x: tg.x + tg.vx * .35 + (Math.random() - .5) * 200, y: -24, vy: 470 + Math.random() * 160, rot: Math.random() * 6}); }
     } else if (e.k === 'glass') {
       const py = e.y; e.y += e.vy * dt; e.rot += dt * 5;
-      for (const o of foes) if (!e.dead && Math.abs(o.x - e.x) < 17 && e.y > o.y - 46 && e.y < o.y) { brHit(o, 6, 115, 1.8, (Math.random() - .5) * 1.4, -.6); e.dead = true; }
+      for (const o of foes) if (!e.dead && Math.abs(o.x - e.x) < 17 && e.y > o.y - 46 && e.y < o.y) { brHit(o, 7, 120, 0, (Math.random() - .5) * 1.4, -.6); e.dead = true; }
       if (!e.dead && (onPlat(e.x, e.y, py) || e.y > H + 40)) e.dead = true;
-      if (e.dead && e.y < H) { burst(e.x, e.y - 4, 5, ['#dff3ff', '#fff', '#9fd3ee'], 200); tone(1800 + Math.random() * 600, 900, .05, 'triangle', .03); }
+      if (e.dead && e.y < H) { burst(e.x, e.y - 4, 9, ['#dff3ff', '#fff', '#9fd3ee'], 260); tone(1800 + Math.random() * 600, 900, .05, 'triangle', .03); }
     } else if (e.k === 'bomb') {
       const py = e.y; e.vy += 1400 * dt; e.y += e.vy * dt; const p = onPlat(e.x, e.y, py); if (p) { e.y = p.y; e.vy = 0; }
       e.t -= dt; if (e.y > H + 60) e.dead = true;
-      if (e.t <= 0) { e.dead = true; const before = foes.map(o => o.dmg); brExplode(e.x, e.y - 12, 108, e.o, 22, 330, 6.6, ['#5a3219', '#f3e3c3', '#8a5a34', '#fff'], true); foes.forEach((o, k) => { if (o.dmg > before[k]) o.slow = 3; }); }
+      if (e.t <= 0) { e.dead = true; const before = foes.map(o => o.hp); brExplode(e.x, e.y - 12, 150, e.o, 42, 440, 0, ['#5a3219', '#f3e3c3', '#8a5a34', '#fff'], true); foes.forEach((o, k) => { if (o.hp < before[k]) o.slow = 4; }); }
+    } else if (e.k === 'ring') {
+      e.t -= dt; if (e.t <= 0) e.dead = true;
     } else if (e.k === 'pizza') {
       e.x += e.vx * dt; e.t -= dt; e.rot += dt * 16; e.y = e.y0 + Math.sin((1.4 - e.t) * 9) * 7; e.sm -= dt;
       if (e.sm <= 0) { e.sm = .035; particles.push({puff: 1, dark: 1, x: e.x, y: e.y + (Math.random() - .5) * 12, vx: (Math.random() - .5) * 30, vy: -14 - Math.random() * 20, g: 0, life: 1.3, size: 9 + Math.random() * 6}); }
       if (e.t <= 0 || e.x < -60 || e.x > W + 60) e.dead = true;
-      for (const o of foes) if (!e.dead && Math.hypot(o.x - e.x, o.y - 24 - e.y) < 30) { if (brHit(o, 8, 195, 3.6, Math.sign(e.vx), -.5)) o.burn = 3; e.dead = true; }
+      for (const o of foes) if (!e.dead && Math.hypot(o.x - e.x, o.y - 24 - e.y) < 30) { if (brHit(o, 16, 280, 0, Math.sign(e.vx), -.5)) { o.burn = 4; burst(e.x, e.y, 18, ['#3a2a1c', '#ff7a1a', '#ffd23f'], 360); } e.dead = true; }
     }
   }
   BR.fx = BR.fx.filter(e => !e.dead);
@@ -2147,7 +2172,7 @@ function updateBrawl(dt) {
   if (state !== 'play' && state !== 'win' && !(BR.mode === 'online' && state === 'pause')) return;
   BR.stage = brStage(); BR.dt = dt; BR.t += dt; if (BR.intro > 0) BR.intro -= dt;
   const n = Math.max(1, Math.ceil(dt / (1 / 120)));
-  for (let s = 0; s < n; s++) { BR.dt = dt / n; for (const f of BR.f) brFighter(f, dt / n); brMelee(); brEffects(dt / n); if (state === 'play' || state === 'pause') brCheckWin(); }
+  for (let s = 0; s < n; s++) { BR.dt = dt / n; for (const f of BR.f) brFighter(f, dt / n); brMelee(); brCurryTouch(); brEffects(dt / n); if (state === 'play' || state === 'pause') brCheckWin(); }
   if (BR.mode === 'online') onlineTick(dt);
 }
 function drawBrIcon(c, type, x, y, time, s = 1) {
@@ -2184,14 +2209,17 @@ function drawBrawl(time) {
     if (e.k === 'glizzy') { c.save(); c.translate(e.x, e.y); c.rotate(e.t * 12); drawGlizzy(c, 0, 0, 0); c.restore(); }
     else if (e.k === 'mini') drawWorst(c, e.x, e.y, e.rot, 16);
     else if (e.k === 'glass') { c.save(); c.translate(e.x, e.y - 10); c.rotate(Math.sin(e.rot) * .4); drawBrIcon(c, 'glass', 0, 0, time, 1); c.restore(); }
-    else if (e.k === 'bomb') { const bl = e.t < .7 ? Math.floor(time / 60) % 2 : Math.floor(time / 160) % 2; if (bl) { c.fillStyle = 'rgba(255,80,40,.35)'; c.beginPath(); c.arc(e.x, e.y - 12, 22 + (1.7 - e.t) * 10, 0, Math.PI * 2); c.fill(); } drawBrIcon(c, 'bomb', e.x, e.y - 11, time, 1.25); }
-    else if (e.k === 'pizza') { c.save(); c.translate(e.x, e.y); c.scale(1, .55); c.rotate(e.rot); drawBrIcon(c, 'pizza', 0, 0, time, 1.5); c.restore(); }
+    else if (e.k === 'bomb') { const bl = e.t < .7 ? Math.floor(time / 60) % 2 : Math.floor(time / 160) % 2; c.strokeStyle = 'rgba(224,48,30,.35)'; c.lineWidth = 2; c.setLineDash([6, 6]); c.beginPath(); c.arc(e.x, e.y - 12, 150, 0, Math.PI * 2); c.stroke(); c.setLineDash([]); if (bl) { c.fillStyle = 'rgba(255,80,40,.35)'; c.beginPath(); c.arc(e.x, e.y - 12, 26 + (1.7 - e.t) * 14, 0, Math.PI * 2); c.fill(); } drawBrIcon(c, 'bomb', e.x, e.y - 13, time, 1.6); }
+    else if (e.k === 'pizza') { c.save(); c.translate(e.x, e.y); c.scale(1, .55); c.rotate(e.rot); drawBrIcon(c, 'pizza', 0, 0, time, 1.9); c.restore(); }
+    else if (e.k === 'ring') { const k = 1 - e.t / e.T; c.globalAlpha = e.t / e.T; c.strokeStyle = e.col; c.lineWidth = 8 * (1 - k) + 1; c.beginPath(); c.arc(e.x, e.y, 12 + (e.R - 12) * (1 - (1 - k) * (1 - k)), 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
   }
   // vechters
   for (const f of BR.f) {
     if (f.dead > 0 || f.stocks <= 0 || f.gone) continue;
     c.save(); c.translate(f.x, f.y);
     c.fillStyle = 'rgba(0,0,0,.25)'; if (f.ground) { c.beginPath(); c.ellipse(0, 1, 14, 3.2, 0, 0, Math.PI * 2); c.fill(); }
+    c.strokeStyle = f.col; c.lineWidth = BR.local.includes(f.i) ? 3 : 2; c.globalAlpha = f.ground ? .9 : .35; c.beginPath(); c.ellipse(0, 1, 19, 5, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;   // gekleurde ring onder de voeten
+    if (f.curry > 0) { const a2 = c.createRadialGradient(0, -34, 6, 0, -34, 46); a2.addColorStop(0, 'rgba(255,140,30,.45)'); a2.addColorStop(1, 'rgba(255,90,0,0)'); c.fillStyle = a2; c.beginPath(); c.arc(0, -34, 46, 0, Math.PI * 2); c.fill(); }
     c.globalAlpha = f.inv > 0 && Math.floor(time / 80) % 2 ? .4 : 1;
     if (f.slow > 0) { c.fillStyle = 'rgba(243,227,195,.8)'; c.beginPath(); c.ellipse(0, -2, 17, 5, 0, 0, Math.PI * 2); c.fill(); }
     c.save(); c.scale(f.face, 1);
@@ -2201,27 +2229,34 @@ function drawBrawl(time) {
     c.restore();
     if (f.burn > 0) for (let i = 0; i < 3; i++) { c.fillStyle = ['#e0301e', '#ff7a1a', '#ffd23f'][i]; const fx = (i - 1) * 9 + Math.sin(time / 70 + i) * 3, fh = 14 + Math.sin(time / 50 + i * 2) * 5; c.beginPath(); c.moveTo(fx - 5, -30); c.quadraticCurveTo(fx, -30 - fh * 2, fx + 5, -30); c.fill(); }
     c.globalAlpha = 1;
-    hudText(c, f.name, 0, -104, 11, 'center', f.col); c.fillStyle = f.col; c.beginPath(); c.moveTo(-5, -100); c.lineTo(5, -100); c.lineTo(0, -93); c.fill();
+    { // naam en levensbalk boven het hoofd
+      const bw = 44, by2 = -98, k = Math.max(0, f.hp) / 100;
+      hudText(c, f.name, 0, by2 - 6, 11, 'center', f.col);
+      c.fillStyle = 'rgba(20,10,6,.75)'; rr(c, -bw / 2 - 1.5, by2 - 1.5, bw + 3, 8, 4); c.fill();
+      c.fillStyle = f.hurtT > 0 && Math.floor(time / 60) % 2 ? '#fff' : k > .5 ? f.col : k > .25 ? '#f2c230' : '#e0301e'; rr(c, -bw / 2, by2, Math.max(0, bw * k), 5, 2.5); c.fill();
+    }
     c.restore();
   }
   drawParticles(c);
   // tussenstand
   const N = BR.f.length, slot = N <= 2 ? 0 : (W - 70) / N;
   for (const f of BR.f) {
-    const dc = f.dmg < 50 ? '#fff' : f.dmg < 100 ? '#ffd23f' : f.dmg < 150 ? '#ff8a3a' : '#ff4a3a', out = f.stocks <= 0 || f.gone;
+    const out = f.stocks <= 0 || f.gone, k = Math.max(0, f.hp) / 100;
+    const bar = (x, y, w, h) => { c.fillStyle = 'rgba(20,10,6,.75)'; rr(c, x - 1.5, y - 1.5, w + 3, h + 3, (h + 3) / 2); c.fill();
+      c.fillStyle = f.hurtT > 0 && Math.floor(time / 60) % 2 ? '#fff' : k > .5 ? f.col : k > .25 ? '#f2c230' : '#e0301e'; rr(c, x, y, Math.max(0, w * k), h, h / 2); c.fill(); };
     if (N <= 2) {
       const right = f.i === 1, x0 = right ? W - 66 : 12, dir = right ? -1 : 1, al = right ? 'right' : 'left';
       if (head.complete) { c.save(); c.translate(x0 + dir * 16, 30); c.scale(right ? -1 : 1, 1); c.drawImage(head, -15, -20, 30, 30 / HEAD_ASPECT); c.restore(); }
-      hudText(c, f.name + ' · ' + skinById(f.skin).name, x0 + dir * 36, 18, 10, al, f.col);
-      hudText(c, Math.round(f.dmg) + '%', x0 + dir * 36, 42, 24, al, dc);
-      for (let k = 0; k < 3; k++) { c.globalAlpha = k < f.stocks ? 1 : .22; drawWorst(c, x0 + dir * (104 + k * 20), 34, -.5, 13); } c.globalAlpha = 1;
-      if (f.hold) { c.fillStyle = 'rgba(43,26,18,.6)'; c.beginPath(); c.arc(x0 + dir * 180, 30, 16, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#f2c230'; c.lineWidth = 2; c.stroke(); drawBrIcon(c, f.hold, x0 + dir * 180, 30, time, .7); }
+      hudText(c, f.name, x0 + dir * 36, 18, 11, al, f.col);
+      bar(right ? x0 - 36 - 90 : x0 + 36, 28, 90, 10);
+      for (let k = 0; k < 3; k++) { c.globalAlpha = k < f.stocks ? 1 : .22; drawWorst(c, x0 + dir * (146 + k * 20), 33, -.5, 13); } c.globalAlpha = 1;
+      if (f.hold) { c.fillStyle = 'rgba(43,26,18,.6)'; c.beginPath(); c.arc(x0 + dir * 222, 30, 16, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#f2c230'; c.lineWidth = 2; c.stroke(); drawBrIcon(c, f.hold, x0 + dir * 222, 30, time, .7); }
     } else {
       const x0 = 8 + f.i * slot; c.globalAlpha = out ? .4 : 1;
       c.fillStyle = 'rgba(43,26,18,.55)'; rr(c, x0, 6, slot - 6, 40, 8); c.fill(); c.strokeStyle = f.col; c.lineWidth = BR.local.includes(f.i) ? 3 : 1.5; c.stroke();
-      if (head.complete) c.drawImage(head, x0 + 3, 9, 24, 24 / HEAD_ASPECT);
+      c.fillStyle = f.col; c.beginPath(); c.arc(x0 + 15, 25, 13, 0, Math.PI * 2); c.fill(); if (head.complete) c.drawImage(head, x0 + 4, 10, 22, 22 / HEAD_ASPECT);
       hudText(c, f.name, x0 + 30, 19, 10, 'left', f.col);
-      hudText(c, out ? 'UIT' : Math.round(f.dmg) + '%', x0 + 30, 40, 17, 'left', out ? '#bbb' : dc);
+      if (out) hudText(c, 'UIT', x0 + 30, 40, 15, 'left', '#bbb'); else bar(x0 + 30, 30, slot - 6 - 30 - 34, 8);
       for (let k = 0; k < f.stocks; k++) { c.fillStyle = '#e0763a'; c.beginPath(); c.arc(x0 + slot - 14 - k * 9, 36, 3.2, 0, Math.PI * 2); c.fill(); }
       if (f.hold) drawBrIcon(c, f.hold, x0 + slot - 18, 18, time, .5);
       c.globalAlpha = 1;
@@ -2366,7 +2401,7 @@ function onlineTick(dt) {
   ON.sendT -= dt;
   if (ON.sendT <= 0 && BR.local.length) {
     ON.sendT = .1; const f = BR.f[BR.local[0]], r3 = v => Math.round(v * 1e4) / 1e4;
-    try { ON.net.set(onBase() + '/p/' + ON.pid + '/s', {r: ON.round, c: ++ON.cnt, x: r3(f.x / W), y: r3(f.y / H), vx: r3(f.vx / W), vy: r3(f.vy / H), f: f.face, g: f.ground ? 1 : 0, d: Math.round(f.dmg), k: f.stocks,
+    try { ON.net.set(onBase() + '/p/' + ON.pid + '/s', {r: ON.round, c: ++ON.cnt, x: r3(f.x / W), y: r3(f.y / H), vx: r3(f.vx / W), vy: r3(f.vy / H), f: f.face, g: f.ground ? 1 : 0, d: Math.round(f.hp), k: f.stocks,
       st: f.stun > 0 ? 1 : 0, a: f.aSeq, h: f.hold || '', dd: f.dead > 0 ? 1 : 0, iv: f.inv > 0 ? 1 : 0, cu: f.curry > 0 ? 1 : 0, bu: f.burn > 0 ? 1 : 0, sl: f.slow > 0 ? 1 : 0, sp: Math.round(f.spin)}); } catch (e) {}
   }
 }
@@ -2378,7 +2413,7 @@ function renderLobby() {
   const el = $('lobbyPlayers'), ids = Object.keys(ON.players).sort(); el.innerHTML = '';
   ids.forEach((id, i) => { const p = ON.players[id], r = document.createElement('div'); r.className = 'brow' + (id === ON.pid ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = p.n + (i === 0 ? ' (start het spel)' : ''); nm.style.color = BR_COLS[i % 6];
-    r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm); r.insertAdjacentHTML('beforeend', `<span class="d">${skinById(p.skin).name}</span>`); el.appendChild(r); });
+    r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm); r.insertAdjacentHTML('beforeend', `<span class="d"><span style="display:inline-block;width:.8em;height:.8em;border-radius:50%;background:${BR_COLS[i % 6]};vertical-align:-.1em"></span> ${BR_COLNAMES[i % 6]}</span>`); el.appendChild(r); });
   const host = onlineIsHost(), playing = ON.meta && ON.meta.state === 'play';
   $('startRoom').style.display = host && !playing ? 'block' : 'none';
   $('startRoom').textContent = ids.length < 2 ? 'Wacht op meer spelers…' : `Start het gevecht (${ids.length} spelers)`;
