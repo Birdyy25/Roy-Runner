@@ -129,7 +129,7 @@
     <div class="card" id="v-board">
       <div class="row" style="justify-content:space-between"><span class="h script">Klassement</span>
         <label class="nm">Naam <input id="nameIn" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></label></div>
-      <div class="row tabs"><button class="tab on" data-tab="endless">Eindeloos rennen</button><button class="tab" data-tab="boss">Rodina</button></div>
+      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="boss">Rodina</button></div>
       <div class="row" style="justify-content:space-between;font-size:.72em;margin:.1em .2em"><i id="boardNote"></i><button id="scopeBtn" class="tab" style="flex:0 0 auto;font-size:1em;padding:.15em .8em"></button></div>
       <div id="boardList"></div>
       <div class="grow"></div>
@@ -573,14 +573,14 @@ function step(dt) {
     for (let i = 0; i < 16; i++) particles.push({x: P.x + PW / 2 + (Math.random() - .5) * 30, y: P.y + 10, vx: (Math.random() - .5) * 220, vy: -60 - Math.random() * 160, g: 120, life: .9, size: 4 + Math.random() * 3, col: i % 2 ? '#fff' : '#ffe9a0'});
   } else if (!fz && P.fly) P.fly = 0;
   P.x += (P.fly ? Math.min(curSpeed(), FLY_SPEED) : curSpeed()) * (P.boost > 0 ? BOOST_MULT : 1) * dt;
-  P.flapCd -= dt; P.flapA = Math.max(0, P.flapA - dt * 4);
+  P.flapCd -= dt; P.flapA = Math.max(0, P.flapA - dt * 4); jumpBuf -= dt;
   P.flyK = Math.max(0, Math.min(1, (P.flyK || 0) + (P.fly ? dt : -dt) * 4));   // overgang naar en van de kleine vliegende Roy
   if (P.fly) {
     if (jumpPressed || (held && P.flapCd <= 0)) {
       P.vy = FLAP; P.flapCd = .22; P.flapA = 1; jumpPressed = false; P.ground = false; tone(380, 620, .07, 'triangle', .04);
       particles.push({x: P.x + 2, y: P.y + 4, vx: -90 - Math.random() * 60, vy: 30 + Math.random() * 50, g: 40, life: .6, size: 4, col: '#fff'});
     }
-  } else if (held && P.ground) { P.vy = JUMP; P.ground = false; jumpPressed = false; tone(520, 880, .08, 'square', .04); }
+  } else if ((held || jumpBuf > 0) && P.ground) { P.vy = JUMP; P.ground = false; jumpPressed = false; jumpBuf = 0; tone(520, 880, .08, 'square', .04); }
   else if (jumpPressed && !P.ground && P.dj > 0 && !P.used2) { // espresso: tweede sprong in de lucht
     P.vy = JUMP * .92; P.used2 = true; jumpPressed = false; tone(700, 1400, .1, 'square', .05);
     burst(P.x + PW / 2, P.y + PH, 8, ['#fff', '#c9a27a', '#6b3e22'], 200);
@@ -1450,7 +1450,8 @@ function updateBoss(dt) {
   BS.t += dt; BS.rel = Math.max(0, (BS.rel || 0) - dt * 3.5); BS.splat = (BS.splat || 0) - dt; BS.cd -= dt; BS.inv -= dt; BS.hurt -= dt; BS.hint -= dt; BS.wind -= dt;
   if (ph !== BS.lastPhase) { BS.lastPhase = ph; banner = 1.6; shake = 10; tone(120, 60, .5, 'sawtooth', .1); }
   // speler
-  if (held && BS.pground) { BS.pvy = JUMP; BS.pground = false; tone(520, 880, .08, 'square', .04); }
+  jumpBuf -= dt;
+  if ((held || jumpBuf > 0) && BS.pground) { BS.pvy = JUMP; BS.pground = false; jumpBuf = 0; tone(520, 880, .08, 'square', .04); }
   BS.pvy += GRAV * dt; BS.py += BS.pvy * dt;
   if (BS.py >= 0) { BS.py = 0; BS.pvy = 0; BS.pground = true; }
   if (BS.wasAir && BS.pground) BS.land = 1; BS.wasAir = !BS.pground; BS.land = Math.max(0, (BS.land || 0) - dt * 5.5); BS.thr = Math.max(0, (BS.thr || 0) - dt * 4.5);
@@ -1846,7 +1847,7 @@ function showResult(title, html, next) {
 function renderModes() {
   const el = $('modeList'); if (!el) return; el.innerHTML = '';
   [
-    ['run', 'Eindeloos rennen', 'Spring over alles heen. Het gaat steeds sneller.', save.bestDist ? save.bestDist + ' m' : 'Nieuw', save.bestDist ? 'jouw record' : '', () => { goFullscreen(); startRun('endless'); }],
+    ['run', 'Run Roy Run!', 'Spring over alles heen. Het gaat steeds sneller.', save.bestDist ? save.bestDist + ' m' : 'Nieuw', save.bestDist ? 'jouw record' : '', () => { goFullscreen(); startRun('endless'); }],
     ['boss', 'Eindbaas Rodina', 'Ontwijk wat ze gooit en gooi worst terug.', save.bossBest ? save.bossBest.v.toFixed(1) + ' s' : save.bossWins ? save.bossWins + '×' : 'Nieuw', save.bossBest ? 'snelste winst' : save.bossWins ? 'verslagen' : '', () => { goFullscreen(); startRun('boss'); }],
     ['brawl', 'Knokken online', 'Tot zes spelers, ieder op zijn eigen telefoon.', '2 tot 6', 'spelers', () => showView('lobby')],
   ].forEach(([ic, n, d, p, sub, fn]) => {
@@ -1930,17 +1931,20 @@ cv.addEventListener('pointerdown', e => {
   const p = gamePt(e);
   if (mode === 'shoot') shootAt(p.x, p.y);
   else if (mode === 'boss' && p.x > W / 2) bossThrow();
-  else { held = true; jumpPressed = true; }
+  else { jumpPtrs.add(e.pointerId); syncHeld(); jumpPressed = true; jumpBuf = .14; }
 });
-window.addEventListener('pointerup', () => held = false);
-window.addEventListener('pointercancel', () => held = false);
+// Springen per vinger bijhouden: loslaten van de gooi-vinger mag een ingedrukte springvinger niet uitzetten,
+// en een heel korte tik wordt 0,14 s onthouden zodat hij nooit tussen twee beeldjes valt
+const jumpPtrs = new Set(); let keyJump = false, jumpBuf = 0;
+function syncHeld() { held = jumpPtrs.size > 0 || keyJump; }
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { jumpPtrs.delete(e.pointerId); syncHeld(); });
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
-  if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) { e.preventDefault(); if (!e.repeat && state === 'play') { audio(); held = true; jumpPressed = true; } }
+  if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) { e.preventDefault(); if (!e.repeat && state === 'play') { audio(); keyJump = true; syncHeld(); jumpPressed = true; jumpBuf = .14; } }
   else if (['f', 'F', 'ArrowRight', 'Enter'].includes(e.key)) { if (!e.repeat && mode === 'boss') bossThrow(); }
   else if (e.key === 'Escape' || e.key === 'p') { if (state === 'play') pause(); else if (state === 'pause') $('resumeBtn').onclick(); }
 });
-window.addEventListener('keyup', e => { if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) held = false; });
+window.addEventListener('keyup', e => { if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) { keyJump = false; syncHeld(); } });
 
 // ================= Knokken (platformvechter) =================
 let BR = null;
