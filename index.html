@@ -71,7 +71,10 @@
   .brow{display:flex;align-items:baseline;gap:.5em;font-size:.86em;padding:.16em .3em;border-bottom:.06em dashed rgba(43,26,18,.22)}
   .brow .r{width:1.6em;font-weight:700;color:var(--red)} .brow .n{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .brow .d{font-size:.8em;opacity:.6} .brow .v{font-weight:700}
   .brow.new{background:#eef6ea;border-radius:.4em}
-  #boardList{flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+  #boardWrap{flex:1 1 0;min-height:0;position:relative;display:flex;flex-direction:column;margin-bottom:.4em}
+  #boardList{flex:1 1 0;min-height:0;overflow-y:hidden;touch-action:none}
+  #boardMore{position:absolute;left:0;right:0;bottom:0;padding:.9em 0 .1em;text-align:center;font-size:.62em;font-weight:700;color:var(--red);background:linear-gradient(rgba(247,239,220,0),var(--cream) 70%);pointer-events:none;opacity:0;transition:opacity .2s}
+  #boardMore.on{opacity:1}
   .empty{text-align:center;font-style:italic;opacity:.7;margin-top:1.5em;font-size:.9em}
   #kb{position:absolute;left:0;right:0;bottom:0;z-index:5;background:#2b1a12;padding:.4em .6em .55em;transform:translateY(105%);transition:transform .18s ease-out;box-shadow:0 -.3em 1em rgba(0,0,0,.45)}
   #kb.on{transform:none}
@@ -131,8 +134,7 @@
         <label class="nm">Naam <input id="nameIn" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></label></div>
       <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="boss">Rodina</button></div>
       <div class="row" style="justify-content:space-between;font-size:.72em;margin:.1em .2em"><i id="boardNote"></i><button id="scopeBtn" class="tab" style="flex:0 0 auto;font-size:1em;padding:.15em .8em"></button></div>
-      <div id="boardList"></div>
-      <div class="grow"></div>
+      <div id="boardWrap"><div id="boardList"></div><div id="boardMore">▼ veeg voor meer</div></div>
       <div class="row" style="gap:.5em"><button class="btn alt small" data-go="main">‹ Terug</button><button class="btn small" id="shareBtn">Deel mijn record</button></div>
     </div>
 
@@ -2150,7 +2152,7 @@ async function loadOnline() {
         const cur = best.get(key), better = !cur || (asc ? e.v < cur.v : e.v > cur.v) || (e.v === cur.v && k === me);
         if (better) best.set(key, Object.assign(e, {mine: (cur && cur.mine) || k === me})); else if (k === me) cur.mine = true;
       }
-      return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v).slice(0, 25);
+      return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
     online = {endless: list(a, false), boss: list(b, true)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
@@ -2175,7 +2177,7 @@ function renderBoard() {
   $('scopeBtn').textContent = boardScope === 'online' ? 'Iedereen' : 'Dit toestel';
   $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per naam';
   el.innerHTML = L.length ? '' : `<div class="empty">${boardTab === 'endless' ? 'Nog geen afstanden. Ga rennen!' : 'Rodina is nog niet verslagen.'}</div>`;
-  L.slice(0, useOnline ? 25 : 10).forEach((e, i) => {
+  L.forEach((e, i) => {
     const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.mine : e === lastScore) ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = e.n;
     r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm);
@@ -2183,7 +2185,23 @@ function renderBoard() {
     r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
     el.appendChild(r);
   });
+  if (useOnline && L.length) $('boardNote').textContent = `${L.length} ${L.length === 1 ? 'speler' : 'spelers'} · beste score per naam`;
+  const mine = el.querySelector('.brow.new'); el.scrollTop = mine ? Math.max(0, mine.offsetTop - el.offsetTop - el.clientHeight / 2) : 0;   // meteen naar je eigen plek
+  boardMoreUpd();
 }
+// lijst zelf laten scrollen met slepen en uitrollen; werkt ook als het scherm in staande stand gedraaid is
+function boardMoreUpd() { const el = $('boardList'); $('boardMore').classList.toggle('on', el.scrollTop + el.clientHeight < el.scrollHeight - 4); }
+(() => {
+  const el = document.getElementById('boardList'); let id = null, last = 0, vel = 0, lt = 0, raf = 0;
+  const pos = e => LAY.portrait ? -e.clientX : e.clientY;   // in staand is de lijst 90° gedraaid
+  el.addEventListener('pointerdown', e => { id = e.pointerId; last = pos(e); vel = 0; lt = performance.now(); cancelAnimationFrame(raf); });
+  window.addEventListener('pointermove', e => { if (e.pointerId !== id) return; const p = pos(e), now = performance.now(), d = last - p;
+    el.scrollTop += d; vel = d / Math.max(1, now - lt); last = p; lt = now; boardMoreUpd(); });
+  const up = e => { if (e.pointerId !== id) return; id = null;
+    const roll = () => { if (Math.abs(vel) < .02) return; el.scrollTop += vel * 16; vel *= .94; boardMoreUpd(); raf = requestAnimationFrame(roll); }; roll(); };
+  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', e => { el.scrollTop += e.deltaY; boardMoreUpd(); }, {passive: true});
+})();
 function refreshWallet() { document.querySelectorAll('[data-wallet]').forEach(e => e.textContent = `🌭 ${save.wallet}`); }
 function showView(name, center) {
   if (name && name !== 'name' && (save.name || '').length < 2) { name = 'name'; center = true; }   // eerst een naam, dan pas spelen
