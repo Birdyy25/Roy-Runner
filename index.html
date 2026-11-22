@@ -71,7 +71,7 @@
   .nm input{font:inherit;width:7.5em;padding:.2em .5em;border:.1em solid var(--gold);border-radius:1em;background:#fffaf0;color:var(--ink);-webkit-user-select:text;user-select:text}
   .code{font:inherit;font-weight:700;font-size:1.2em;letter-spacing:.2em;text-transform:uppercase;width:5.2em;text-align:center;padding:.35em .3em;border:.1em solid var(--green);border-radius:1em;background:#fffaf0;color:var(--ink);-webkit-user-select:text;user-select:text}
   .tabs{gap:.4em;margin:.4em 0 .2em}
-  .tab{flex:1;font-family:inherit;font-size:.82em;font-weight:700;padding:.3em;border-radius:1em;border:.1em solid var(--green);background:transparent;color:var(--green);cursor:pointer}
+  .tab{flex:1;font-family:inherit;font-size:.7em;font-weight:700;padding:.3em;border-radius:1em;border:.1em solid var(--green);background:transparent;color:var(--green);cursor:pointer}
   .tab.on{background:var(--green);color:var(--cream)}
   .brow{display:flex;align-items:baseline;gap:.5em;font-size:.86em;padding:.16em .3em;border-bottom:.06em dashed rgba(43,26,18,.22)}
   .brow .r{width:1.6em;font-weight:700;color:var(--red)} .brow .n{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .brow .d{font-size:.8em;opacity:.6} .brow .v{font-weight:700}
@@ -137,7 +137,7 @@
     <div class="card" id="v-board">
       <div class="row" style="justify-content:space-between"><span class="h script">Klassement</span>
         <label class="nm">Naam <input id="nameIn" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></label></div>
-      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="boss">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button></div>
+      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="boss">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button><button class="tab" data-tab="bake">Pizzeria</button></div>
       <div class="row" style="justify-content:space-between;font-size:.72em;margin:.1em .2em"><i id="boardNote"></i><button id="scopeBtn" class="tab" style="flex:0 0 auto;font-size:1em;padding:.15em .8em"></button></div>
       <div id="boardWrap"><div id="boardList"></div><div id="boardMore">▼ veeg voor meer</div></div>
       <div class="row" style="gap:.5em"><button class="btn alt small" data-go="main">‹ Terug</button><button class="btn small" id="shareBtn">Deel mijn record</button></div>
@@ -518,6 +518,7 @@ function startRun(m, i, seed) {
   else if (m === 'brawl') { levelIdx = i === undefined ? 1 : i; startBrawl(levelIdx); }
   else if (m === 'shoot') startShoot();
   else if (m === 'pizza') startPizza();
+  else if (m === 'bake') startBake();
   showView(null); $('pauseBtn').style.display = 'flex';
 }
 
@@ -616,6 +617,7 @@ function burst(x, y, n, cols, sp = 300) {
 }
 // ---- Doodsquotes: bij elke keer doodgaan een willekeurige grap met Roy erin
 const ROY_QUOTES = {
+  bake: ["Roy bakt ze bruin. Iets te bruin.", "De klant wacht nog steeds op zijn Hawaii.", "Ananas op pizza? Roy twijfelt nog.", "Mamma mia, Roy, de oven!", "Roy noemt het 'extra krokant'."],
   pizza: ["Roy bezorgt de pizza's. Op de vloer.", "Dozen naar links, Roy naar rechts.", "Wie bestelde een pizza op de grond?", "Roy's nek heeft ontslag genomen.", "Margherita? Eerder Margherite-plat."],
   fles: ["Joyce wil haar flesjes terug, Roy.", "Je tikte Roy. Roy tikt terug.", "Proost op niks.", "De glasbak is vol, Roy niet.", "Joyce: 'Wie heeft er op Roy getikt?'"],
   any: [
@@ -909,6 +911,7 @@ function update(dt) {
   else if (state !== 'menu' && mode === 'boss') updateBoss(dt);
   else if (state !== 'menu' && mode === 'shoot') updateShoot(dt);
   else if (state !== 'menu' && mode === 'pizza') updatePizza(dt);
+  else if (state !== 'menu' && mode === 'bake') updateBake(dt);
   else if (state === 'play') {
     const n = Math.ceil(dt / (1 / 240));
     for (let i = 0; i < n && state === 'play'; i++) step(dt / n);
@@ -1397,6 +1400,7 @@ function draw(time) {
   if (mode === 'boss') { drawBoss(time); c.restore(); return; }
   if (mode === 'shoot') { drawShoot(time); c.restore(); return; }
   if (mode === 'pizza') { drawPizza(time); c.restore(); return; }
+  if (mode === 'bake') { drawBake(time); c.restore(); return; }
   const prog = Math.min(1, P.x / END_X), camX = P.x - W * 0.28;
   if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   if (mode === 'endless') {   // de zaal verandert mee met het tempo: middag, zonsondergang, nacht
@@ -2336,11 +2340,225 @@ function drawPizza(time) {
   if (state === 'dead') drawRoyd(c, deadTimer);
 }
 
+// ================= Pizzeria Roy: bestellingen beleggen, bakken en serveren (zoals Overcooked) =================
+const ING = {
+  saus: {n: 'Saus', col: '#c8281e'}, kaas: {n: 'Kaas', col: '#f6e7a8'}, basilicum: {n: 'Basilicum', col: '#2f8a3a'}, salami: {n: 'Salami', col: '#a0222a'},
+  champignon: {n: 'Champignon', col: '#c9b49a'}, ham: {n: 'Ham', col: '#f0a0a0'}, ananas: {n: 'Ananas', col: '#f2c230'}, olijf: {n: 'Olijven', col: '#2a2a2a'}, peper: {n: 'Peper', col: '#e0301e'},
+};
+const ING_ORDER = ['saus', 'kaas', 'basilicum', 'salami', 'champignon', 'ham', 'ananas', 'olijf', 'peper'];
+const RECIPES = [
+  {n: 'Margherita', t: ['saus', 'kaas', 'basilicum'], from: 0},
+  {n: 'Salami', t: ['saus', 'kaas', 'salami'], from: 0},
+  {n: 'Funghi', t: ['saus', 'kaas', 'champignon'], from: 2},
+  {n: 'Hawaii', t: ['saus', 'kaas', 'ham', 'ananas'], from: 6},
+  {n: 'Prosciutto', t: ['saus', 'kaas', 'ham', 'champignon'], from: 8},
+  {n: 'Diavola', t: ['saus', 'kaas', 'salami', 'peper'], from: 14},
+  {n: 'Bella Sardegna', t: ['saus', 'kaas', 'salami', 'olijf', 'basilicum'], from: 14},
+  {n: "Roy's Special", t: ['saus', 'kaas', 'salami', 'ananas', 'peper'], from: 20},
+  {n: 'Quattro Stagioni', t: ['saus', 'kaas', 'ham', 'champignon', 'olijf', 'basilicum'], from: 26},
+];
+const BAKE_T = 3.6, BURN_T = 5.5;   // na 3,6 s goudbruin, 5,5 s later verbrand
+let BK = null;
+function bkUnlocked() { const s = BK.served; return ING_ORDER.filter(k => k === 'saus' || k === 'kaas' || k === 'basilicum' || k === 'salami' || (k === 'champignon' && s >= 2) || ((k === 'ham' || k === 'ananas') && s >= 6) || ((k === 'olijf' || k === 'peper') && s >= 14)); }
+function startBake() {
+  theme = KITCHEN; themeFrom = null; themeT = 0; worstCount = 0; banked = false; clearWorld(); P = null; particles = [];
+  BK = {t: 0, served: 0, lives: 3, orders: [], nextOrder: 1.2, boards: [{tops: [], dough: true}, {tops: [], dough: true}], sel: 0, oven: [null, null], hint: 7, shown: false, oid: 0, combo: 0, newIng: 0, rush: 0};
+  state = 'play'; deadTimer = 0;
+}
+function bkLay() {   // alles schaalt mee met het scherm
+  const r = Math.min(46, H * .115), by = H * .52, tw = Math.min(150, (W - 180) / 4 - 8);
+  const unl = BK ? bkUnlocked() : ING_ORDER, bw = Math.min(84, (W - 30) / unl.length - 6), bh = Math.min(52, H * .13), bx0 = W / 2 - (unl.length * (bw + 6) - 6) / 2;
+  return {r, boards: [{x: W * .3, y: by}, {x: W * .48, y: by}], oven: {x: W * .76, y: by - 6, w: Math.min(250, W * .3), slots: [{x: W * .76 - Math.min(250, W * .3) * .23, y: by + 4}, {x: W * .76 + Math.min(250, W * .3) * .23, y: by + 4}]},
+    trash: {x: W * .1, y: by + 4}, tickets: {x: 150, y: 8, w: tw, h: 74}, bins: unl.map((k, i) => ({k, x: bx0 + i * (bw + 6), y: H - bh - 10, w: bw, h: bh}))};
+}
+function bkNewOrder() {
+  const pool = RECIPES.filter(rc => rc.from <= BK.served), rc = pool[Math.floor(Math.random() * pool.length)];
+  const pat = Math.max(15, 38 - BK.served * .7);
+  BK.orders.push({id: BK.oid++, rc, t: pat, max: pat, in: 0});
+  tone(988, 988, .08, 'triangle', .05); tone(1319, 1319, .1, 'triangle', .05, .09);   // belletje
+}
+const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+function bkServe(slot) {
+  const p = BK.oven[slot]; BK.oven[slot] = null; const L = bkLay(), sx = L.oven.slots[slot].x, sy = L.oven.slots[slot].y;
+  const o = BK.orders.filter(o => sameSet(o.rc.t, p.tops)).sort((a, b) => a.t - b.t)[0];
+  if (!o) { popText('Niemand bestelde dit!', sx, sy - 50, '#ff8a7a', 16); tone(220, 160, .25, 'sawtooth', .07); BK.combo = 0; return; }
+  BK.orders.splice(BK.orders.indexOf(o), 1); BK.served++; BK.combo++;
+  const k = o.t / o.max, tip = 2 + (k > .6 ? 3 : k > .3 ? 1 : 0) + Math.min(3, BK.combo - 1);
+  worstCount += tip; popText(k > .6 ? `Perfetto! +${tip}` : `+${tip}`, sx, sy - 50, k > .6 ? '#9fe08a' : '#fff', 20);
+  [784, 988, 1175].forEach((f, i) => tone(f, f, .12, 'triangle', .06, i * .06));
+  burst(sx, sy, 14, ['#ffe14f', '#fff', '#9fe08a'], 260);
+  const before = bkUnlocked().length;
+  if (BK.served % 10 === 0) { bannerTxt = 'SPITSUUR! HET WORDT DRUKKER'; banner = 1.8; BK.rush = 1; }
+  if (RECIPES.some(rc => rc.from === BK.served)) { const nr = RECIPES.filter(rc => rc.from === BK.served).map(r => r.n).join(' en '); bannerTxt = `NIEUW OP DE KAART: ${nr.toUpperCase()}`; banner = 2; }
+  if (bkUnlocked().length > before) BK.newIng = 3;
+}
+function bkLoseLife(msg, x, y) {
+  BK.lives--; BK.combo = 0; shake = 10; flash = .5; tone(240, 70, .35, 'sawtooth', .1); popText(msg, x, y, '#ff8a7a', 18);
+  if (BK.lives <= 0) { state = 'dead'; deadTimer = 0; deathQuote = pickQuote('bake'); if (BK.served > (save.bestBake || 0)) save.bestBake = BK.served; addScore('bake', BK.served); bank(); }
+}
+function bkTap(x, y) {
+  if (!BK || state !== 'play') return;
+  const L = bkLay();
+  for (const b of L.bins) if (x > b.x - 3 && x < b.x + b.w + 3 && y > b.y - 6 && y < b.y + b.h + 6) {   // ingrediënt op de gekozen plank
+    let bi = BK.sel; if (!BK.boards[bi].dough) bi = 1 - bi; const bd = BK.boards[bi];
+    if (!bd.dough) { popText('Wacht op deeg', b.x + b.w / 2, b.y - 12, '#fff', 14); return; }
+    if (bd.tops.includes(b.k)) { tone(300, 260, .05, 'sine', .03); return; }
+    if (bd.tops.length >= 7) return;
+    bd.tops.push(b.k); BK.sel = bi; tone(500 + bd.tops.length * 60, 700 + bd.tops.length * 60, .06, 'triangle', .05);
+    for (let i = 0; i < 5; i++) particles.push({x: L.boards[bi].x + (Math.random() - .5) * 40, y: L.boards[bi].y + (Math.random() - .5) * 30, vx: (Math.random() - .5) * 80, vy: -60 - Math.random() * 60, g: 300, life: .35, size: 4, col: ING[b.k].col});
+    return;
+  }
+  for (let i = 0; i < 2; i++) { const s = L.oven.slots[i]; if (Math.hypot(x - s.x, y - s.y) < L.r + 14 && BK.oven[i]) {   // uit de oven halen
+    const p = BK.oven[i];
+    if (p.t >= BAKE_T + BURN_T) { BK.oven[i] = null; popText('Weggegooid', s.x, s.y - 40, '#ccc', 14); burst(s.x, s.y, 10, ['#222', '#555'], 200); return; }
+    if (p.t < BAKE_T) { popText('Nog niet klaar!', s.x, s.y - 40, '#fff', 14); return; }
+    return bkServe(i);
+  } }
+  for (let i = 0; i < 2; i++) { const b = L.boards[i]; if (Math.hypot(x - b.x, y - b.y) < L.r + 16) {   // plank: kiezen, of de oven in
+    const bd = BK.boards[i];
+    if (BK.sel !== i || !bd.tops.length) { BK.sel = i; tone(420, 420, .03, 'sine', .03); if (!bd.tops.length) return; }
+    if (!bd.dough) return;
+    const slot = BK.oven.indexOf(null);
+    if (slot < 0) { popText('Oven is vol!', W * .76, H * .52 - 60, '#ffd23f', 15); return; }
+    BK.oven[slot] = {tops: bd.tops.slice(), t: 0}; bd.tops = []; bd.dough = false; bd.wait = .45; tone(200, 400, .15, 'triangle', .05);
+    return;
+  } }
+  if (Math.hypot(x - L.trash.x, y - L.trash.y) < 40) {   // prullenbak: gekozen plank leeggooien
+    const bd = BK.boards[BK.sel]; if (bd.tops.length) { bd.tops = []; tone(160, 90, .15, 'sawtooth', .05); popText('Weg ermee', L.trash.x, L.trash.y - 40, '#ccc', 14); }
+  }
+}
+function updateBake(dt) {
+  if (state === 'dead') {
+    deadTimer += dt;
+    if (deadTimer > 1.8 && !BK.shown) { BK.shown = true; showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>${BK.served} pizza's geserveerd · record ${save.bestBake || 0}<br>🌭 +${worstCount} worstjes`); }
+    return;
+  }
+  if (state !== 'play') return;
+  BK.t += dt; BK.hint -= dt; BK.newIng = Math.max(0, BK.newIng - dt);
+  const s = BK.served, gap = Math.max(3.2, 10.5 - s * .3) * (BK.orders.length === 0 ? .35 : 1);
+  BK.nextOrder -= dt;
+  if (BK.nextOrder <= 0 && BK.orders.length < 4) { bkNewOrder(); BK.nextOrder = gap * (.8 + Math.random() * .4); }
+  const L = bkLay();
+  for (let i = BK.orders.length - 1; i >= 0; i--) { const o = BK.orders[i]; o.in = Math.min(1, o.in + dt * 4); o.t -= dt;
+    if (o.t <= 0) { BK.orders.splice(i, 1); bkLoseLife('Klant boos weg!', L.tickets.x + i * (L.tickets.w + 8) + L.tickets.w / 2, L.tickets.y + L.tickets.h + 20); if (state !== 'play') return; } }
+  for (const bd of BK.boards) if (!bd.dough) { bd.wait -= dt; if (bd.wait <= 0) bd.dough = true; }
+  for (let i = 0; i < 2; i++) { const p = BK.oven[i]; if (!p) continue; const was = p.t; p.t += dt;
+    if (was < BAKE_T && p.t >= BAKE_T) tone(1568, 1568, .15, 'sine', .05);
+    if (p.t > BAKE_T + BURN_T * .6 && Math.random() < dt * 8) particles.push({puff: 1, dark: 1, x: L.oven.slots[i].x + (Math.random() - .5) * 30, y: L.oven.slots[i].y - 20, vx: (Math.random() - .5) * 30, vy: -60, g: -20, life: .8, size: 5 + Math.random() * 4}); }
+}
+function drawPizzaTop(c, x, y, r, tops, bake) {   // bake: 0 rauw, 1 goudbruin, 2 verbrand
+  c.save(); c.translate(x, y);
+  const burnt = bake >= 2, gold = bake >= 1;
+  c.fillStyle = burnt ? '#3a2a20' : gold ? '#d9a050' : '#f0dcb0'; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = burnt ? '#1a120c' : gold ? '#a86a2a' : '#d8c090'; c.lineWidth = r * .1; c.stroke();
+  if (tops.includes('saus')) { c.fillStyle = burnt ? '#3a1410' : '#c8281e'; c.beginPath(); c.arc(0, 0, r * .82, 0, Math.PI * 2); c.fill(); }
+  if (tops.includes('kaas')) { c.fillStyle = burnt ? '#4a3a28' : gold ? '#f6d880' : '#fbf0c4'; for (let i = 0; i < 9; i++) { const a = i * 2.4, d = (i % 3) * r * .26; c.beginPath(); c.arc(Math.cos(a) * d, Math.sin(a) * d, r * .3, 0, Math.PI * 2); c.fill(); } }
+  let k = 0;
+  for (const t of tops) { if (t === 'saus' || t === 'kaas') continue; k++;
+    for (let i = 0; i < 6; i++) { const a = i * 1.047 + k * .6, d = r * (.28 + (i % 2) * .3), px = Math.cos(a) * d, py = Math.sin(a) * d;
+      c.save(); c.translate(px, py); c.rotate(a + k);
+      if (burnt) { c.fillStyle = '#1a120c'; c.beginPath(); c.arc(0, 0, r * .1, 0, Math.PI * 2); c.fill(); c.restore(); continue; }
+      if (t === 'salami') { c.fillStyle = '#a0222a'; c.beginPath(); c.arc(0, 0, r * .15, 0, Math.PI * 2); c.fill(); c.fillStyle = '#f3c9c0'; c.fillRect(-1.5, -2, 2, 2); c.fillRect(2, 1, 2, 2); }
+      else if (t === 'champignon') { c.fillStyle = '#c9b49a'; c.beginPath(); c.arc(0, 0, r * .12, Math.PI, 0); c.fill(); c.fillStyle = '#e8dcc8'; c.fillRect(-r * .04, 0, r * .08, r * .1); }
+      else if (t === 'basilicum') { c.fillStyle = '#2f8a3a'; c.beginPath(); c.ellipse(0, 0, r * .13, r * .07, 0, 0, Math.PI * 2); c.fill(); }
+      else if (t === 'ham') { c.fillStyle = '#f0a0a0'; c.fillRect(-r * .1, -r * .07, r * .2, r * .14); c.fillStyle = '#fff'; c.fillRect(-r * .1, -r * .07, r * .2, 1.5); }
+      else if (t === 'ananas') { c.fillStyle = '#f2c230'; c.beginPath(); c.moveTo(0, -r * .1); c.lineTo(r * .1, r * .08); c.lineTo(-r * .1, r * .08); c.closePath(); c.fill(); }
+      else if (t === 'olijf') { c.strokeStyle = '#1a1a1a'; c.lineWidth = r * .06; c.beginPath(); c.arc(0, 0, r * .07, 0, Math.PI * 2); c.stroke(); }
+      else if (t === 'peper') { c.fillStyle = '#e0301e'; c.beginPath(); c.ellipse(0, 0, r * .12, r * .04, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = '#2f8a3a'; c.fillRect(r * .1, -1, 3, 2); }
+      c.restore(); }
+  }
+  c.restore();
+}
+function drawIngIcon(c, k, x, y, s) {   // klein plaatje van een ingrediënt
+  c.save(); c.translate(x, y); c.scale(s, s);
+  if (k === 'saus') { c.fillStyle = '#c8281e'; c.beginPath(); c.arc(0, 2, 9, 0, Math.PI * 2); c.fill(); c.fillStyle = '#8a8a8a'; c.fillRect(-1.5, -12, 3, 9); c.beginPath(); c.ellipse(0, -12, 4, 2, 0, 0, Math.PI * 2); c.fill(); }
+  else if (k === 'kaas') { c.fillStyle = '#f6d860'; c.beginPath(); c.moveTo(-10, 7); c.lineTo(10, 7); c.lineTo(10, -2); c.lineTo(-10, -8); c.closePath(); c.fill(); c.fillStyle = '#d8b440'; c.beginPath(); c.arc(-3, 1, 2, 0, 7); c.arc(4, 3, 1.6, 0, 7); c.fill(); }
+  else if (k === 'salami') { for (const [dx, dy] of [[-5, 2], [5, 3], [0, -5]]) { c.fillStyle = '#a0222a'; c.beginPath(); c.arc(dx, dy, 6, 0, 7); c.fill(); c.strokeStyle = '#6a1218'; c.lineWidth = 1; c.stroke(); c.fillStyle = '#f3c9c0'; c.fillRect(dx - 2, dy - 1, 2, 2); c.fillRect(dx + 1, dy + 1, 2, 2); } }
+  else if (k === 'champignon') { for (const dx of [-5, 5]) { c.fillStyle = '#e8dcc8'; c.fillRect(dx - 2, -1, 4, 8); c.fillStyle = '#b89a78'; c.beginPath(); c.arc(dx, 0, 6.5, Math.PI, 0); c.fill(); } }
+  else if (k === 'basilicum') { for (const a of [-.6, .6, 0]) { c.save(); c.rotate(a); c.fillStyle = a ? '#2f8a3a' : '#3fa04a'; c.beginPath(); c.ellipse(0, -5, 4, 8, 0, 0, 7); c.fill(); c.restore(); } }
+  else if (k === 'ham') { c.fillStyle = '#f0a0a0'; c.beginPath(); c.ellipse(0, 0, 11, 7, -.2, 0, 7); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.ellipse(0, 0, 9, 5, -.2, .3, 2.6); c.stroke(); }
+  else if (k === 'ananas') { for (const [dx, dy] of [[-5, 3], [5, 3], [0, -4]]) { c.fillStyle = '#f2c230'; c.beginPath(); c.moveTo(dx, dy - 6); c.lineTo(dx + 6, dy + 4); c.lineTo(dx - 6, dy + 4); c.closePath(); c.fill(); c.strokeStyle = '#c89a10'; c.lineWidth = 1; c.stroke(); } }
+  else if (k === 'olijf') { for (const [dx, dy] of [[-5, 2], [5, 2], [0, -5]]) { c.fillStyle = '#2a2a2a'; c.beginPath(); c.ellipse(dx, dy, 5, 4, 0, 0, 7); c.fill(); c.fillStyle = '#6a5a3a'; c.beginPath(); c.arc(dx, dy, 1.6, 0, 7); c.fill(); } }
+  else if (k === 'peper') { for (const [dy, a] of [[-3, -.3], [4, .25]]) { c.save(); c.translate(0, dy); c.rotate(a); c.fillStyle = '#e0301e'; c.beginPath(); c.ellipse(0, 0, 10, 3.5, 0, 0, 7); c.fill(); c.fillStyle = '#2f8a3a'; c.fillRect(9, -1.5, 4, 3); c.restore(); } }
+  c.restore();
+}
+function drawBake(time) {
+  const c = ctx, L = bkLay();
+  if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+  drawKitchen(0, time);
+  // aanrecht
+  const cy = L.boards[0].y - L.r - 16;
+  c.fillStyle = '#b8c0cc'; c.fillRect(-20, cy, W + 40, 6); c.fillStyle = '#d6dce4'; c.fillRect(-20, cy + 6, W + 40, H);
+  c.fillStyle = '#9aa3b3'; c.fillRect(-20, L.bins[0].y - 14, W + 40, 4);
+  // bestelbonnen
+  BK.orders.forEach((o, i) => {
+    const tx = L.tickets.x + i * (L.tickets.w + 8), ty = L.tickets.y - (1 - o.in) * 90, tw = L.tickets.w, th = L.tickets.h, k = o.t / o.max;
+    c.save(); c.translate(tx + tw / 2, ty); c.rotate(Math.sin(i * 2.1) * .03 + (k < .25 ? Math.sin(time / 40) * .03 : 0)); c.translate(-tw / 2, 0);
+    c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(3, 3, tw, th); c.fillStyle = '#fffdf6'; c.fillRect(0, 0, tw, th);
+    c.fillStyle = '#5d6574'; c.beginPath(); c.arc(tw / 2, 3, 3, 0, 7); c.fill();
+    c.fillStyle = '#2b1a12'; c.font = 'bold 12px Georgia,serif'; c.textAlign = 'center'; c.fillText(o.rc.n, tw / 2, 19);
+    const ic = o.rc.t.filter(t => t !== 'saus' && t !== 'kaas'), n = ic.length + 2, sp = Math.min(22, (tw - 10) / n);
+    ['saus', 'kaas'].concat(ic).forEach((t, j) => drawIngIcon(c, t, tw / 2 - (n - 1) * sp / 2 + j * sp, 40, .72));
+    c.fillStyle = '#e8e2d4'; c.fillRect(6, th - 12, tw - 12, 6);
+    c.fillStyle = k > .5 ? '#2fae5a' : k > .25 ? '#f2c230' : '#e0301e'; c.fillRect(6, th - 12, (tw - 12) * Math.max(0, k), 6);
+    c.restore();
+  });
+  // prullenbak
+  c.save(); c.translate(L.trash.x, L.trash.y); c.fillStyle = '#5d6574'; rr(c, -22, -22, 44, 50, 6); c.fill(); c.fillStyle = '#7c8594'; rr(c, -26, -30, 52, 10, 4); c.fill();
+  c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 2; for (const dx of [-10, 0, 10]) { c.beginPath(); c.moveTo(dx, -14); c.lineTo(dx, 20); c.stroke(); } c.restore();
+  hudText(c, 'weg', L.trash.x, L.trash.y + 44, 11, 'center');
+  // planken
+  L.boards.forEach((b, i) => {
+    const bd = BK.boards[i], sel = BK.sel === i;
+    c.fillStyle = '#a8743c'; rr(c, b.x - L.r - 10, b.y - L.r - 10, L.r * 2 + 20, L.r * 2 + 20, 10); c.fill(); c.fillStyle = '#8a5a2a'; c.fillRect(b.x + L.r + 6, b.y - 6, 14, 12);
+    if (sel) { c.strokeStyle = '#ffe14f'; c.lineWidth = 3.5; rr(c, b.x - L.r - 13, b.y - L.r - 13, L.r * 2 + 26, L.r * 2 + 26, 12); c.stroke(); }
+    if (bd.dough) drawPizzaTop(c, b.x, b.y, L.r, bd.tops, 0);
+    else { c.fillStyle = 'rgba(255,255,255,.5)'; c.font = 'italic 11px Georgia,serif'; c.textAlign = 'center'; c.fillText('nieuw deeg…', b.x, b.y + 4); }
+    if (bd.dough && bd.tops.length) hudText(c, 'tik = oven in', b.x, b.y + L.r + 24, 11, 'center', 'rgba(255,255,255,.9)');
+  });
+  // oven
+  const O = L.oven, ow = O.w, oh = L.r * 2 + 50;
+  c.fillStyle = '#7a3a22'; rr(c, O.x - ow / 2, O.y - oh / 2 - 24, ow, oh + 30, 18); c.fill();
+  c.strokeStyle = 'rgba(0,0,0,.25)'; c.lineWidth = 1.5; for (let yy = O.y - oh / 2 - 14; yy < O.y + oh / 2; yy += 12) { c.beginPath(); c.moveTo(O.x - ow / 2 + 6, yy); c.lineTo(O.x + ow / 2 - 6, yy); c.stroke(); }
+  hudText(c, 'FORNO', O.x, O.y - oh / 2 - 6, 12, 'center', '#ffd23f');
+  O.slots.forEach((s, i) => {
+    const p = BK.oven[i];
+    const g = c.createRadialGradient(s.x, s.y + 10, 4, s.x, s.y, L.r + 12); g.addColorStop(0, '#ffb040'); g.addColorStop(1, '#2a1208');
+    c.fillStyle = g; c.beginPath(); c.arc(s.x, s.y, L.r + 10, Math.PI, 0); c.lineTo(s.x + L.r + 10, s.y + L.r * .55); c.lineTo(s.x - L.r - 10, s.y + L.r * .55); c.closePath(); c.fill();
+    for (let f = 0; f < 4; f++) { const fx = s.x - L.r * .7 + f * L.r * .45, fh = 8 + Math.sin(time / 70 + f + i) * 4; c.fillStyle = 'rgba(255,170,40,.9)'; c.beginPath(); c.moveTo(fx - 5, s.y + L.r * .55); c.quadraticCurveTo(fx, s.y + L.r * .55 - fh * 2, fx + 5, s.y + L.r * .55); c.fill(); }
+    if (!p) return;
+    const st = p.t >= BAKE_T + BURN_T ? 2 : p.t >= BAKE_T ? 1 : 0;
+    drawPizzaTop(c, s.x, s.y, L.r * .82, p.tops, st);
+    // voortgangsring: bakken (oranje), klaar (groen), bijna verbrand (rood knipperend)
+    const ring = st === 0 ? p.t / BAKE_T : st === 1 ? (p.t - BAKE_T) / BURN_T : 1, col = st === 0 ? '#ffb040' : st === 1 ? (ring > .6 && Math.sin(time / 60) > 0 ? '#e0301e' : '#5fd068') : '#555';
+    c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 6; c.beginPath(); c.arc(s.x, s.y, L.r + 2, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = col; c.beginPath(); c.arc(s.x, s.y, L.r + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, ring), st === 1); c.stroke();
+    if (st === 1) hudText(c, 'KLAAR! tik', s.x, s.y - L.r - 10, 12, 'center', '#9fe08a');
+    if (st === 2) hudText(c, 'VERBRAND', s.x, s.y - L.r - 10, 12, 'center', '#ccc');
+  });
+  // ingrediëntenbakken
+  for (const b of L.bins) {
+    const fresh = BK.newIng > 0 && ['champignon', 'ham', 'ananas', 'olijf', 'peper'].includes(b.k) && !(BK.served >= 14 ? false : false);
+    c.fillStyle = '#eef1f3'; rr(c, b.x, b.y, b.w, b.h, 8); c.fill(); c.strokeStyle = '#8a93a3'; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = ING[b.k].col; c.globalAlpha = .18; rr(c, b.x + 3, b.y + 3, b.w - 6, b.h - 6, 6); c.fill(); c.globalAlpha = 1;
+    drawIngIcon(c, b.k, b.x + b.w / 2, b.y + b.h * .4, Math.min(1.1, b.h / 46));
+    c.fillStyle = '#2b1a12'; c.font = 'bold 9.5px Georgia,serif'; c.textAlign = 'center'; c.fillText(ING[b.k].n, b.x + b.w / 2, b.y + b.h - 5);
+  }
+  drawParticles(c);
+  drawHearts(c, BK.lives, 12, 32);
+  hudText(c, `${BK.served}`, 70, 66, 26, 'center'); hudText(c, "pizza's", 70, 80, 11, 'center', 'rgba(255,255,255,.85)');
+  drawWorst(c, 22, 100, -0.3, 18); hudText(c, `× ${worstCount}`, 38, 106, 14);
+  if (state === 'play' && BK.hint > 0) { c.save(); c.translate(0, -(L.bins[0].h + 18)); drawHint(c, 'Tik ingrediënten op de pizza · tik de pizza om te bakken · tik als hij klaar is', BK.hint); c.restore(); }
+  if (banner > 0 && state === 'play') hudText(c, bannerTxt, W / 2, H * .36, 24, 'center', '#ffe14f');
+  if (flash > 0) { c.fillStyle = `rgba(255,240,220,${flash * .35})`; c.fillRect(-20, -20, W + 40, H + 40); }
+  if (state === 'dead') drawRoyd(c, deadTimer);
+}
+
 // ================= Menu's =================
 // ---- Klassement (per toestel)
 let boardTab = 'endless', lastScore = null;
 const DB_URL = 'https://roy-runner-default-rtdb.europe-west1.firebasedatabase.app';
-let boardScope = 'online', online = {endless: null, boss: null, pizza: null, fles: null}, onlineState = 'idle';
+let boardScope = 'online', online = {endless: null, boss: null, pizza: null, fles: null, bake: null}, onlineState = 'idle';
 function myId() { if (!save.pid) { save.pid = 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); persist(); } return save.pid; }
 async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klassement nooit blijft hangen
   const ac2 = new AbortController(), tm = setTimeout(() => ac2.abort(), 7000);
@@ -2348,7 +2566,7 @@ async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klasseme
 }
 async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onder je eigen sleutel
   const nm = (save.name || 'Roy').slice(0, 12) || 'Roy';
-  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : (save.bossBest ? {n: nm, v: save.bossBest.v, x: save.bossBest.x || 0} : null);
+  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : (save.bossBest ? {n: nm, v: save.bossBest.v, x: save.bossBest.x || 0} : null);
   if (!rec) return;
   rec.t = {'.sv': 'timestamp'};
   try { await netFetch(`${DB_URL}/best/${kind}/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}); } catch (e) {}
@@ -2356,8 +2574,8 @@ async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onde
 async function loadOnline() {
   onlineState = 'loading'; renderBoard();
   try {
-    await Promise.all(['endless', 'boss', 'pizza', 'fles'].map(pushBest));
-    const [a, b, pz, fl] = await Promise.all(['endless', 'boss', 'pizza', 'fles'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
+    await Promise.all(['endless', 'boss', 'pizza', 'fles', 'bake'].map(pushBest));
+    const [a, b, pz, fl, bk] = await Promise.all(['endless', 'boss', 'pizza', 'fles', 'bake'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
     if (a === null && b === null) throw new Error('offline');
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
@@ -2369,14 +2587,14 @@ async function loadOnline() {
       }
       return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
-    online = {endless: list(a, false), boss: list(b, true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
+    online = {endless: list(a, false), boss: list(b, true), pizza: list(pz, false), fles: list(fl, false), bake: list(bk, false)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
 }
 function addScore(kind, v, extra) {
   if (kind === 'endless' && v < 10) return;
   save.board = save.board || {}; save.board[kind] = save.board[kind] || [];
-  if ((kind === 'pizza' || kind === 'fles') && v < 1) return;
+  if ((kind === 'pizza' || kind === 'fles' || kind === 'bake') && v < 1) return;
   const e = {n: (save.name || 'Roy').slice(0, 12), v, x: extra, d: new Date().toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'})};
   const L = save.board[kind]; L.push(e);
   L.sort(kind !== 'boss' ? (a, b) => b.v - a.v : (a, b) => a.v - b.v);
@@ -2392,13 +2610,13 @@ function renderBoard() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === boardTab));
   $('scopeBtn').textContent = boardScope === 'online' ? 'Iedereen' : 'Dit toestel';
   $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per naam';
-  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', boss: 'Rodina is nog niet verslagen.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.'}[boardTab]}</div>`;
+  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', boss: 'Rodina is nog niet verslagen.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.', bake: "Nog geen pizza's geserveerd."}[boardTab]}</div>`;
   L.forEach((e, i) => {
     const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.mine : e === lastScore) ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = e.n;
     r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm);
     const dt = useOnline ? (e.t ? new Date(e.t).toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'}) : '') : (e.d || '');
-    r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
+    r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'bake' ? e.v + " pizza's" : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
     el.appendChild(r);
   });
   if (useOnline && L.length) $('boardNote').textContent = `${L.length} ${L.length === 1 ? 'speler' : 'spelers'} · beste score per naam`;
@@ -2444,15 +2662,17 @@ function renderModes() {
     ['boss', 'Eindbaas Rodina', 'Ontwijk wat ze gooit en gooi worst terug.', save.bossBest ? save.bossBest.v.toFixed(1) + ' s' : save.bossWins ? save.bossWins + '×' : 'Nieuw', save.bossBest ? 'snelste winst' : save.bossWins ? 'verslagen' : '', () => { goFullscreen(); startRun('boss'); }],
     ['pizza', 'Pizzatoren', 'Kantel je telefoon en houd de stapel dozen in balans.', save.bestPizza ? save.bestPizza + ' dozen' : 'Nieuw', save.bestPizza ? 'record' : '', () => { tiltEnable(); goFullscreen(); startRun('pizza'); }],
     ['fles', "Joyce's flesjes", 'Tik de flesjes kapot. Niet op Roy tikken!', save.bestFles ? save.bestFles + ' flesjes' : 'Nieuw', save.bestFles ? 'record' : '', () => { goFullscreen(); startRun('shoot'); }],
+    ['bake', 'Pizzeria Roy', 'Beleg, bak en serveer. Het wordt steeds drukker.', save.bestBake ? save.bestBake + " pizza's" : 'Nieuw', save.bestBake ? 'record' : '', () => { goFullscreen(); startRun('bake'); }],
     ['brawl', 'Knokken online', 'Tot zes spelers, ieder op zijn eigen telefoon.', '2 tot 6', 'spelers', () => showView('lobby')],
   ].forEach(([ic, n, d, p, sub, fn]) => {
-    const b = document.createElement('button'); b.className = 'dish' + (ic === 'brawl' ? ' wide' : '');
+    const b = document.createElement('button'); b.className = 'dish';
     const cn = document.createElement('canvas'); cn.width = cn.height = 132; b.appendChild(cn);
     b.insertAdjacentHTML('beforeend', `<div><div class="t">${n}</div><div class="d">${d}</div><div class="p">${p} <small>${sub}</small></div></div>`);
     const paint = () => { const c = cn.getContext('2d'); c.clearRect(0, 0, 132, 132); c.save(); c.beginPath(); c.arc(66, 66, 62, 0, Math.PI * 2); c.clip();
       if (ic === 'run') { c.strokeStyle = 'rgba(176,34,43,.5)'; c.lineWidth = 5; c.lineCap = 'round'; for (let k = 0; k < 3; k++) { c.beginPath(); c.moveTo(8, 50 + k * 22); c.lineTo(34 - k * 6, 50 + k * 22); c.stroke(); } if (head.complete) c.drawImage(head, 34, 14, 82, 82 / HEAD_ASPECT); }
       else if (ic === 'boss') { if (rodinaA.complete) c.drawImage(rodinaA, 12, 16, 110, 110 / ROD_ASPECT); }
       else if (ic === 'pizza') { for (let k = 0; k < 6; k++) drawPizzaBox(c, 66 + Math.sin(k * 1.3) * 5 + k * 1.5, 112 - k * 17, (k - 2.5) * .03, k / 6, 92, 18); }
+      else if (ic === 'bake') { drawPizzaTop(c, 66, 66, 52, ['saus', 'kaas', 'salami', 'basilicum', 'champignon'], 1); }
       else if (ic === 'fles') { c.save(); c.translate(66, 72); c.scale(1.65, 1.65); drawBottle(c, -14, 4, -.35, 0, false); drawBottle(c, 15, 0, .3, 1, false); c.restore(); }
       else { c.save(); c.translate(66, 70); c.scale(2.6, 2.6); drawWorst(c, 0, 0, -.8, 30); drawWorst(c, 0, 0, .8, 30); c.restore(); c.fillStyle = '#f2c230'; c.strokeStyle = '#8a6410'; c.lineWidth = 2; c.beginPath(); for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, r = k % 2 ? 9 : 20; c.lineTo(66 + Math.cos(a) * r, 26 + Math.sin(a) * r); } c.closePath(); c.fill(); c.stroke(); }
       c.restore(); };
@@ -2532,6 +2752,7 @@ cv.addEventListener('pointerdown', e => {
   if (state !== 'play' || mode === 'brawl') return;
   const p = gamePt(e);
   if (mode === 'shoot') shootAt(p.x, p.y);
+  else if (mode === 'bake') bkTap(p.x, p.y);
   else if (mode === 'boss' && p.x > W / 2) bossThrow();
   else { jumpPtrs.add(e.pointerId); syncHeld(); jumpPressed = true; jumpBuf = .14; }
 });
