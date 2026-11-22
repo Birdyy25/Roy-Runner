@@ -2315,7 +2315,9 @@ let BR = null;
 const BR_NAMES = {glizzy: 'DANIELS GLIZZY EXPLOSIE!', glass: 'GLAZEN REGEN VAN JOYCE!', bomb: "RODINA'S TIRAMISU BOM!", pizza: "MO'S VERBRANDE PIZZA!", curry: 'CURRY VAN ROY!'};
 const BR_SHORT = {glizzy: 'GLIZZY', glass: 'GLAZEN', bomb: 'BOM', pizza: 'PIZZA', curry: 'CURRY'};
 const BR_TYPES = ['glizzy', 'glass', 'bomb', 'pizza', 'curry'];
-const brTouches = new Map(), brKeys = new Set(), brLatch = {};   // brLatch: knoppen die kort zijn aangetikt, zodat een snelle tik nooit wordt gemist
+const brTouches = new Map(), brKeys = new Set(), brLatch = {};
+const JOY_R = 52, brJoy = {id: null, bx: 0, by: 0, x: 0, y: 0};   // zwevende joystick zoals in Brawl Stars: verschijnt waar je duim de linkerhelft raakt
+const joyHome = () => ({x: 96, y: H - 84});   // brLatch: knoppen die kort zijn aangetikt, zodat een snelle tik nooit wordt gemist
 function brStage() { return {main: {x1: W * .16, x2: W * .84, y: H * .7}, soft: [{x1: W * .2, x2: W * .38, y: H * .47}, {x1: W * .62, x2: W * .8, y: H * .47}, {x1: W * .41, x2: W * .59, y: H * .26}]}; }
 const BR_COLS = ['#2f7fe0', '#e0301e', '#2fae5a', '#f2c230', '#b05ae0', '#ff8a3a'], BR_COLNAMES = ['Blauw', 'Rood', 'Groen', 'Geel', 'Paars', 'Oranje'];
 function brSpawn(i) { const st = brStage(), sp = [[.3, st.main.y], [.7, st.main.y], [.5, st.soft[2].y], [.29, st.soft[0].y], [.71, st.soft[1].y], [.5, st.main.y]][i % 6]; return {x: W * sp[0], y: sp[1]}; }
@@ -2325,14 +2327,14 @@ function brMake(i, o) {
     burn: 0, burnT: 0, slow: 0, curry: 0, run: 0, airB: 0, land: 0, thr: 0, dead: 0, spin: 0, skin: 'onesie:' + BR_COLS[i % 6], name: 'P' + (i + 1), col: BR_COLS[i % 6], ai: {t: .6, jump: 0}, prev: {}}, o);
 }
 function startBrawl(n) {   // 0 = computer tegen computer, 1 = tegen de computer, 2 = twee spelers op één toestel
-  theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear();
+  theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear(); brJoy.id = null;
   const pool = SKINS.map(s => s.id).sort(() => Math.random() - .5);   // iedereen een willekeurige Roy
   const f = [brMake(0, {cpu: n === 0, name: n === 0 ? 'CPU 1' : 'P1'}), brMake(1, {cpu: n !== 2, name: n === 2 ? 'P2' : n === 0 ? 'CPU 2' : 'CPU'})];
   BR = {n, mode: n === 2 ? 'local2' : 'cpu', f, local: n === 2 ? [0, 1] : n === 1 ? [0] : [], fx: [], crates: [], crateT: 3.5, t: 0, intro: 1.8, winner: -1, shown: false, dt: 0, stage: brStage()};
   state = 'play'; deadTimer = 0;
 }
 function startBrawlOnline(order) {
-  theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear();
+  theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null; brTouches.clear(); brKeys.clear(); brJoy.id = null;
   const f = order.map((pid, i) => { const pl = ON.players[pid] || {}; return brMake(i, {id: pid, remote: pid !== ON.pid, name: (pl.n || 'Roy').slice(0, 12), gone: !ON.players[pid]}); });
   const me = f.findIndex(q => q.id === ON.pid);
   BR = {n: 1, mode: 'online', f, local: me >= 0 ? [me] : [], me, fx: [], crates: [], crateT: 4, t: 0, intro: 2.2, winner: -1, shown: false, dt: 0, stage: brStage(), overT: 0, seen: {}};
@@ -2342,11 +2344,15 @@ function brButtons() {
   if (BR.mode === 'local2') { const b = []; for (const i of [0, 1]) { const m = x => i ? W - x : x; b.push({p: i, k: 'l', x: m(i ? 98 : 38), y: H - 38, r: 27, lab: '◀'}, {p: i, k: 'r', x: m(i ? 38 : 98), y: H - 38, r: 27, lab: '▶'}, {p: i, k: 'j', x: m(38), y: H - 100, r: 27, lab: '▲'}, {p: i, k: 'a', x: m(98), y: H - 100, r: 27, lab: 'SLA'}); } return b; }
   if (!BR.local.length) return [];
   const p = BR.local[0];
-  return [{p, k: 'l', x: 46, y: H - 50, r: 36, lab: '◀'}, {p, k: 'r', x: 138, y: H - 50, r: 36, lab: '▶'}, {p, k: 'j', x: W - 164, y: H - 56, r: 46, lab: '▲'}, {p, k: 'a', x: W - 54, y: H - 72, r: 48, lab: 'SLA'}];
+  return [{p, k: 'j', x: W - 164, y: H - 56, r: 46, lab: '▲'}, {p, k: 'a', x: W - 54, y: H - 72, r: 48, lab: 'SLA'}];
 }
 function brInput(i) {
   const inp = {l: false, r: false, j: false, a: false}, two = BR.mode === 'local2';
   for (const b of brButtons()) if (b.p === i) for (const t of brTouches.values()) if (Math.hypot(t.x - b.x, t.y - b.y) < b.r + 9) inp[b.k] = true;
+  if (!two && brJoy.id !== null && BR.local[0] === i) {   // joystick: hoe verder je duwt, hoe harder je loopt
+    const dx = Math.max(-1, Math.min(1, (brJoy.x - brJoy.bx) / JOY_R)), a = Math.abs(dx);
+    if (a > .15) { inp.mx = Math.sign(dx) * Math.min(1, .35 + (a - .15) / .6 * .65); if (dx < 0) inp.l = true; else inp.r = true; }
+  }
   const lt = brLatch[i]; if (lt) { for (const k in lt) if (lt[k]) inp[k] = true; brLatch[i] = null; }
   const K = k => brKeys.has(k);
   if (!two || i === 0) { if (K('a')) inp.l = true; if (K('d')) inp.r = true; if (K('w')) inp.j = true; if (K('f') || K('g')) inp.a = true; }
@@ -2429,8 +2435,8 @@ function brFighter(f, dt) {
   const inp = BR.intro > 0 || state !== 'play' ? {} : f.cpu ? brAI(f, o) : brInput(f.i), jp = inp.j && !f.prev.j, ap = inp.a && !f.prev.a; f.prev = inp;
   const can = f.stun <= 0, sp = 235 * (f.curry > 0 ? 1.6 : 1) * (f.slow > 0 ? .5 : 1);
   if (can) {
-    const want = (inp.r ? 1 : 0) - (inp.l ? 1 : 0), acc = (f.ground ? 2600 : 1400) * dt, d = want * sp - f.vx;
-    f.vx += Math.max(-acc, Math.min(acc, d)); if (want && f.atk <= 0) f.face = want;
+    const want = inp.mx ? inp.mx : (inp.r ? 1 : 0) - (inp.l ? 1 : 0), acc = (f.ground ? 2600 : 1400) * dt, d = want * sp - f.vx;
+    f.vx += Math.max(-acc, Math.min(acc, d)); if (want && f.atk <= 0) f.face = Math.sign(want);
     if (jp && f.jumps > 0) { f.vy = f.ground ? -650 : -590; f.jumps--; f.ground = false; tone(520, 880, .08, 'square', .04); particles.push({puff: 1, x: f.x, y: f.y, vx: 0, vy: 20, g: 0, life: .35, size: 5}); }
     if (ap && f.atk <= 0) { if (f.hold) brUse(f); else { f.atk = .34; f.atkHit = false; f.thr = 1; f.aSeq++; tone(700, 380, .08, 'square', .04); } if (BR.mode === 'online') ON.sendT = 0; }
   } else { f.stun -= dt; f.vx *= Math.pow(.3, dt); }
@@ -2632,6 +2638,16 @@ function drawBrawl(time) {
   }
   if (BR.mode === 'online' && !BR.local.length && state === 'play') hudText(c, 'Je kijkt mee', W / 2, H - 24, 14, 'center');
   if (BR.mode === 'online' && BR.local.length && BR.f[BR.local[0]].stocks <= 0 && state === 'play') hudText(c, 'Je ligt eruit en kijkt mee', W / 2, H - 24, 14, 'center');
+  if (state === 'play' && BR.mode !== 'local2' && BR.local.length && BR.f[BR.local[0]].stocks > 0) {   // joystick tekenen
+    const act = brJoy.id !== null, h = joyHome(), bx = act ? brJoy.bx : h.x, by = act ? brJoy.by : h.y, col = BR.f[BR.local[0]].col;
+    let kx = act ? brJoy.x - bx : 0, ky = act ? brJoy.y - by : 0; const d = Math.hypot(kx, ky); if (d > JOY_R) { kx *= JOY_R / d; ky *= JOY_R / d; }
+    c.globalAlpha = act ? .55 : .3; c.fillStyle = 'rgba(43,26,18,.75)'; c.beginPath(); c.arc(bx, by, JOY_R + 14, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#f7efdc'; c.lineWidth = 2.5; c.stroke();
+    c.fillStyle = '#f7efdc'; for (const s2 of [-1, 1]) { c.beginPath(); c.moveTo(bx + s2 * (JOY_R + 4), by); c.lineTo(bx + s2 * (JOY_R - 6), by - 7); c.lineTo(bx + s2 * (JOY_R - 6), by + 7); c.fill(); }
+    c.globalAlpha = act ? .95 : .55; c.fillStyle = col; c.beginPath(); c.arc(bx + kx, by + ky, 27, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#fff'; c.lineWidth = 2.5; c.stroke(); c.fillStyle = 'rgba(255,255,255,.35)'; c.beginPath(); c.arc(bx + kx - 7, by + ky - 8, 9, 0, Math.PI * 2); c.fill();
+    c.globalAlpha = 1;
+  }
   if (state === 'play') for (const b of brButtons()) {
     let on = false; for (const t of brTouches.values()) if (Math.hypot(t.x - b.x, t.y - b.y) < b.r + 9) on = true;
     const hold = b.k === 'a' && BR.f[b.p].hold;
@@ -2645,10 +2661,14 @@ function drawBrawl(time) {
   if (state === 'win') hudText(c, BR.mode === 'cpu' && BR.n === 1 ? (BR.winner === 0 ? 'GEWONNEN!' : 'VERLOREN…') : `${BR.f[BR.winner].name} WINT!`, W / 2, H * .42, 44, 'center', '#ffe14f');
 }
 // aanraking en toetsen voor het knokken (meerdere vingers tegelijk)
-cv.addEventListener('pointerdown', e => { if (mode === 'brawl' && state === 'play') { audio(); const pt = gamePt(e); brTouches.set(e.pointerId, pt);
+cv.addEventListener('pointerdown', e => { if (mode === 'brawl' && state === 'play') { audio(); const pt = gamePt(e);
+  if (BR.mode !== 'local2' && BR.local.length && brJoy.id === null && pt.x < W * .45 && pt.y > 70) {   // linkerhelft: joystick verschijnt onder je duim
+    brJoy.id = e.pointerId; brJoy.bx = Math.max(JOY_R + 8, Math.min(W * .45, pt.x)); brJoy.by = Math.max(JOY_R + 70, Math.min(H - JOY_R - 8, pt.y)); brJoy.x = pt.x; brJoy.y = pt.y; return;
+  }
+  brTouches.set(e.pointerId, pt);
   for (const b of brButtons()) if (Math.hypot(pt.x - b.x, pt.y - b.y) < b.r + 9) { (brLatch[b.p] = brLatch[b.p] || {})[b.k] = true; } } });
-cv.addEventListener('pointermove', e => { if (brTouches.has(e.pointerId)) brTouches.set(e.pointerId, gamePt(e)); });
-for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => brTouches.delete(e.pointerId));
+cv.addEventListener('pointermove', e => { if (e.pointerId === brJoy.id) { const pt = gamePt(e); brJoy.x = pt.x; brJoy.y = pt.y; } else if (brTouches.has(e.pointerId)) brTouches.set(e.pointerId, gamePt(e)); });
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { brTouches.delete(e.pointerId); if (e.pointerId === brJoy.id) brJoy.id = null; });
 window.addEventListener('keydown', e => { if (mode === 'brawl' && !(e.target && e.target.tagName === 'INPUT')) { brKeys.add(e.key.toLowerCase()); if (state === 'play' && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault(); } });
 window.addEventListener('keyup', e => brKeys.delete(e.key.toLowerCase()));
 
