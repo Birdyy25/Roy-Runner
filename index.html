@@ -48,11 +48,12 @@
   .dish .d{font-style:italic;font-size:.76em;opacity:.72;line-height:1.25;margin-top:.1em}
   .dish .p{text-align:right;color:var(--red);font-weight:700;font-size:1.05em;white-space:nowrap}
   .dish .p small{display:block;font-size:.6em;font-weight:400;font-style:italic;color:var(--ink);opacity:.65}
-  #modeList{margin-top:.45em;border-top:.14em double var(--red);border-bottom:.14em double var(--red);padding:.2em 0;display:grid;grid-template-columns:1fr 1fr;column-gap:.5em}
-  #modeList .dish{grid-template-columns:2.7em 1fr;column-gap:.5em;padding:.3em .2em;border-top:.07em solid rgba(43,26,18,.16)}
-  #modeList .dish:nth-child(-n+2){border-top:0}
-  #modeList .dish canvas{width:2.7em;height:2.7em}
-  #modeList .dish .t{font-size:.92em} #modeList .dish .d{font-size:.62em;margin-top:0} #modeList .dish .p{text-align:left;font-size:.72em;margin-top:.1em} #modeList .dish .p small{display:inline;font-size:.85em}
+  #modeList{margin-top:.45em;border-top:.14em double var(--red);border-bottom:.14em double var(--red);padding:.2em 0;display:grid;grid-template-columns:1fr 1fr 1fr;column-gap:.4em}
+  #modeList .dish{grid-template-columns:2.4em 1fr;column-gap:.35em;padding:.32em .1em;border-top:.07em solid rgba(43,26,18,.16)}
+  #modeList .dish:nth-child(-n+3){border-top:0}
+  #modeList .dish .d{display:none}
+  #modeList .dish canvas{width:2.4em;height:2.4em}
+  #modeList .dish .t{font-size:.8em;line-height:1.1} #modeList .dish .d{font-size:.62em;margin-top:0} #modeList .dish .p{text-align:left;font-size:.72em;margin-top:.1em} #modeList .dish .p small{display:inline;font-size:.85em}
   #modeList .dish.wide{grid-column:1 / span 2}
   .foot{display:flex;align-items:center;gap:.45em}
   .chip{font-family:inherit;font-size:.88em;font-weight:700;color:var(--green);background:transparent;border:.1em solid var(--green);border-radius:2em;padding:.38em .9em;cursor:pointer}
@@ -532,6 +533,7 @@ function startRun(m, i, seed) {
   else if (m === 'shoot') startShoot();
   else if (m === 'pizza') startPizza();
   else if (m === 'bake') startBake();
+  else if (m === 'fnar') startFnar();
   showView(null); $('pauseBtn').style.display = 'flex';
 }
 
@@ -610,7 +612,7 @@ function italStep(i, t) {
 }
 let song = null, mIdx = 0, mNext = 0;
 setInterval(() => {
-  const want = save.mute || !ac || !mBus ? null : state === 'menu' ? 'ital' : state === 'pause' ? null : 'metal';
+  const want = save.mute || !ac || !mBus ? null : state === 'menu' ? 'ital' : state === 'pause' || mode === 'fnar' ? null : 'metal';
   if (want !== song) { song = want; mIdx = 0; mNext = 0; }
   if (!song) return;
   try {
@@ -630,6 +632,9 @@ function burst(x, y, n, cols, sp = 300) {
 }
 // ---- Doodsquotes: bij elke keer doodgaan een willekeurige grap met Roy erin
 const ROY_QUOTES = {
+  fnar_basel: ["Basel stond al de hele tijd achter de deur.", "Roy had de deur dicht moeten doen.", "Basel zegt: welterusten, Roy.", "Het licht ging aan. Basel ook."],
+  fnar_obada: ["Obada bewoog toen je niet keek.", "Je rook de vape te laat, Roy.", "Obada kwam uit de wijnkelder. En niet voor de wijn.", "Roy keek weg. Eén seconde. Genoeg."],
+  fnar_forno: ["De oven was heter dan Roy.", "Roy is goed doorbakken.", "Gas uit, Roy. GAS UIT.", "Roy noemt het 'extra krokant'."],
   bake: ["Roy bakt ze bruin. Iets te bruin.", "De klant wacht nog steeds op zijn Hawaii.", "Ananas op pizza? Roy twijfelt nog.", "Mamma mia, Roy, de oven!", "Roy noemt het 'extra krokant'."],
   pizza: ["Roy bezorgt de pizza's. Op de vloer.", "Dozen naar links, Roy naar rechts.", "Wie bestelde een pizza op de grond?", "Roy's nek heeft ontslag genomen.", "Margherita? Eerder Margherite-plat."],
   fles: ["Joyce wil haar flesjes terug, Roy.", "Je tikte Roy. Roy tikt terug.", "Proost op niks.", "De glasbak is vol, Roy niet.", "Joyce: 'Wie heeft er op Roy getikt?'"],
@@ -925,6 +930,7 @@ function update(dt) {
   else if (state !== 'menu' && mode === 'shoot') updateShoot(dt);
   else if (state !== 'menu' && mode === 'pizza') updatePizza(dt);
   else if (state !== 'menu' && mode === 'bake') updateBake(dt);
+  else if (state !== 'menu' && mode === 'fnar') updateFnar(dt);
   else if (state === 'play') {
     const n = Math.ceil(dt / (1 / 240));
     for (let i = 0; i < n && state === 'play'; i++) step(dt / n);
@@ -1502,6 +1508,7 @@ function draw(time) {
   if (mode === 'shoot') { drawShoot(time); c.restore(); return; }
   if (mode === 'pizza') { drawPizza(time); c.restore(); return; }
   if (mode === 'bake') { drawBake(time); c.restore(); return; }
+  if (mode === 'fnar') { drawFnar(time); c.restore(); return; }
   const prog = Math.min(1, P.x / END_X), camX = P.x - W * 0.28;
   if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   if (mode === 'endless') {   // de zaal verandert mee met het tempo: middag, zonsondergang, nacht
@@ -2754,6 +2761,298 @@ function drawBake(time) {
   if (state === 'dead') drawRoyd(c, deadTimer);
 }
 
+// ================= Five Nights at Roy's: nachtdienst met camera's, deuren en beperkte stroom =================
+// Basel komt via links (beweegt altijd), Obada via rechts (beweegt alleen als je niet naar hem kijkt), de Forno-oven moet je af en toe uitzetten.
+const FN_ROOMS = {zaal: 'CAM 1 · Eetzaal', kast: 'CAM 2 · Voorraadkast', gangL: 'CAM 3 · Linker gang', kelder: 'CAM 4 · Wijnkelder', keuken: 'CAM 5 · Keuken', gangR: 'CAM 6 · Rechter gang'};
+const FN_MAP = {zaal: [.18, .25], kast: [.08, .62], gangL: [.3, .72], kelder: [.82, .2], keuken: [.66, .42], gangR: [.7, .74]};
+const FN_PATH = {
+  basel: {start: 'zaal', next: {zaal: ['kast', 'gangL'], kast: ['gangL'], gangL: ['doorL']}, door: 'doorL', ivl: 4.6},
+  obada: {start: 'kelder', next: {kelder: ['keuken'], keuken: ['gangR'], gangR: ['doorR']}, door: 'doorR', ivl: 4.0},
+};
+const FN_LVL = [[4, 0, 0], [7, 5, .55], [10, 9, .8], [13, 13, 1.0], [17, 16, 1.3]];   // per nacht: Basel, Obada, oven-hitte per seconde
+const FN_HOUR = 45;   // seconden per uur, 00:00 tot 06:00
+const FN_CALLS = [
+  ["Hé Roy, met de baas. Fijn dat je de nachtdienst doet.", "Kleine waarschuwing: Basel loopt 's nachts weleens rond. Niemand weet hoe hij binnenkomt.", "Zie je hem in de deuropening als je het licht aandoet? Deur dicht. Snel.", "En let op je stroom. Als die op is… tja. Succes!"],
+  ["Roy, nacht twee. Je leeft nog, mooi.", "Obada zit meestal beneden in de wijnkelder. Hij beweegt alleen als niemand kijkt.", "Hou hem dus in de gaten op de camera's. En de oven gaat soms vanzelf aan.", "Zie je de oven-lamp branden? Camera 5, gas uit. Anders… brand."],
+  ["Ze worden onrustiger, Roy. Ik hoor het op de opnames.", "Hoor je voetstappen dichtbij? Licht aan, kijk in de deuropening.", "En deuren dicht kost stroom. Niet te lang laten zitten."],
+  ["Ik… ik ben er morgen niet.", "Als je dit hoort, doe de deuren dicht en…", "…wacht, wat was dat geluid? Roy, hoor jij dat ook?"],
+  ["…Roy…", "…niet… de deur… open…", "…ze zijn al… binnen…"],
+];
+let FN = null;
+function fnLvl(i) { const n = FN.night, h = Math.floor(FN.t / FN_HOUR); return FN_LVL[n - 1][i] + (i < 2 && n > 1 ? Math.max(0, h - 1) : 0); }
+function startFnar() {
+  theme = THEMES[2]; themeFrom = null; worstCount = 0; banked = false; clearWorld(); P = null; particles = [];
+  const night = Math.max(1, Math.min(5, save.fnarNight || 1));
+  FN = {night, t: 0, power: 100, doorL: false, doorR: false, lightL: false, lightR: false, cam: false, camK: 0, sel: 'zaal', stat: 0, glitch: 0,
+        th: {basel: {pos: 'zaal', mt: 2 + Math.random() * 2, at: 0}, obada: {pos: 'kelder', mt: 3 + Math.random() * 2, at: 0}},
+        heat: 0, phase: 'call', callI: 0, callT: 0, jump: null, jumpT: 0, dark: 0, darkT: 0, amb: 0, shown: false, won: false, step: 0, hint: 0, doorAnim: {L: 0, R: 0}, msg: '', msgT: 0};
+  state = 'play'; deadTimer = 0;
+}
+function fnSnd(kind) {
+  if (save.mute || !audio()) return;
+  try { const t = ac.currentTime;
+    if (kind === 'step') { tone(80, 40, .14, 'sine', .3); tone(70, 35, .14, 'sine', .25, .32); }
+    else if (kind === 'door') { tone(120, 60, .18, 'square', .1); noise(t, .15, .1, 400); }
+    else if (kind === 'light') tone(2400, 2300, .04, 'square', .02);
+    else if (kind === 'cam') { noise(t, .12, .06, 2000); tone(900, 1200, .05, 'square', .02); }
+    else if (kind === 'knock') { for (let i = 0; i < 3; i++) { tone(160, 90, .1, 'sine', .25, i * .18); noise(t + i * .18, .06, .08, 600); } }
+    else if (kind === 'hiss') noise(t, 1.1, .05, 3500);
+    else if (kind === 'creak') tone(220, 140, .9, 'sawtooth', .012);
+    else if (kind === 'fire') noise(t, .4, .05, 1200);
+    else if (kind === 'chime') [0, .5, 1, 1.5, 2, 2.5].forEach((d, i) => tone([784, 659, 523, 784, 659, 1046][i], [784, 659, 523, 784, 659, 1046][i], .6, 'triangle', .09, d));
+    else if (kind === 'scream') {   // jumpscare: hard en schel
+      noise(t, 1.3, .55, 600); noise(t, .9, .4, 3000);
+      for (let i = 0; i < 6; i++) tone(900 + Math.random() * 900, 120 + Math.random() * 100, 1.1, i % 2 ? 'sawtooth' : 'square', .16, i * .02);
+      tone(60, 30, 1.2, 'sawtooth', .35);
+    }
+    else if (kind === 'box') { const m = [76, 79, 76, 72, 74, 76, 74, 71]; m.forEach((n, i) => tone(hz(n), hz(n), .35, 'triangle', .05, i * .4)); }
+  } catch (e) {}
+}
+function fnJump(who) {
+  if (FN.phase === 'jump' || FN.phase === 'won') return;
+  FN.phase = 'jump'; FN.jump = who; FN.jumpT = 0; FN.cam = false; shake = 26; fnSnd('scream');
+  deathQuote = pickQuote('fnar_' + who);
+  if (navigator.vibrate) try { navigator.vibrate([300, 80, 400]); } catch (e) {}
+}
+function fnWin() {
+  FN.phase = 'won'; FN.won = true; FN.cam = false; FN.jumpT = 0; fnSnd('chime');
+  worstCount = 40 + FN.night * 30;
+  const first = FN.night >= (save.fnarNight || 1);
+  if (first) save.fnarNight = Math.min(6, FN.night + 1);
+  save.fnarBest = Math.max(save.fnarBest || 0, FN.night);
+  if (FN.night === 5 && !save.owned.includes('worst')) { save.owned.push('worst'); FN.unlock = true; }
+  bank();
+}
+function fnTap(x, y) {
+  if (!FN) return;
+  if (FN.phase === 'call') { if (x > W / 2 - 90 && x < W / 2 + 90 && y > H - 58) { FN.phase = 'play'; } return; }
+  if (FN.phase !== 'play' || FN.dark) return;
+  const L = fnLay();
+  if (y > H - 46 && x > W / 2 - 150 && x < W / 2 + 150) { FN.cam = !FN.cam; fnSnd('cam'); FN.stat = .35; return; }   // camera omhoog/omlaag
+  if (FN.cam) {
+    for (const k in FN_MAP) { const r = L.mapBtn(k); if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) { if (FN.sel !== k) { FN.sel = k; FN.stat = .4; fnSnd('cam'); } return; } }
+    if (FN.sel === 'keuken' && FN_LVL[FN.night - 1][2] > 0) { const b = L.gasBtn; if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) { FN.heat = 0; FN.power = Math.max(0, FN.power - 1.5); fnSnd('door'); FN.msg = 'Gas uit'; FN.msgT = 1; } }
+    return;
+  }
+  for (const s of ['L', 'R']) {
+    const d = L['door' + s], l = L['light' + s];
+    if (x > d.x && x < d.x + d.w && y > d.y && y < d.y + d.h) { FN['door' + s] = !FN['door' + s]; fnSnd('door'); return; }
+    if (x > l.x && x < l.x + l.w && y > l.y && y < l.y + l.h) { FN['light' + s] = !FN['light' + s]; if (FN['light' + s]) FN['light' + (s === 'L' ? 'R' : 'L')] = false; fnSnd('light'); return; }
+  }
+}
+function fnLay() {
+  const bw = 62, bh = 40, mw = Math.min(300, W * .36), mh = Math.min(170, H * .44), mx = W - mw - 16, my = H - mh - 56;
+  return {doorL: {x: 14, y: H * .36, w: bw, h: bh}, lightL: {x: 14, y: H * .36 + bh + 10, w: bw, h: bh},
+          doorR: {x: W - bw - 14, y: H * .36, w: bw, h: bh}, lightR: {x: W - bw - 14, y: H * .36 + bh + 10, w: bw, h: bh},
+          map: {x: mx, y: my, w: mw, h: mh}, mapBtn: k => ({x: mx + FN_MAP[k][0] * mw - 30, y: my + FN_MAP[k][1] * mh - 13, w: 60, h: 26}),
+          gasBtn: {x: 30, y: H - 120, w: 150, h: 44}};
+}
+function updateFnar(dt) {
+  if (!FN) return;
+  FN.stat = Math.max(0, FN.stat - dt); FN.msgT = Math.max(0, FN.msgT - dt); FN.glitch = Math.max(0, FN.glitch - dt);
+  FN.camK += ((FN.cam ? 1 : 0) - FN.camK) * Math.min(1, dt * 10);
+  FN.doorAnim.L += ((FN.doorL ? 1 : 0) - FN.doorAnim.L) * Math.min(1, dt * 12); FN.doorAnim.R += ((FN.doorR ? 1 : 0) - FN.doorAnim.R) * Math.min(1, dt * 12);
+  if (FN.phase === 'jump') {
+    FN.jumpT += dt;
+    if (FN.jumpT > 1.4 && state === 'play') { state = 'dead'; deadTimer = 0; }
+    if (state === 'dead') { deadTimer += dt; if (deadTimer > 2.2 && !FN.shown) { FN.shown = true; showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>Nacht ${FN.night} · tot ${fnClock()} volgehouden`); } }
+    return;
+  }
+  if (FN.phase === 'won') { FN.jumpT += dt; if (FN.jumpT > 4 && !FN.shown) { FN.shown = true; state = 'win'; showResult(FN.night >= 5 ? 'Alle 5 nachten overleefd!' : `Nacht ${FN.night} overleefd!`, `06:00. Je bent nog heel, Roy.<br>🌭 +${worstCount} worstjes${FN.unlock ? '<br><b>Skin Meneer Worst vrijgespeeld!</b>' : ''}${FN.night < 5 ? `<br>Volgende keer: nacht ${FN.night + 1}` : ''}`); } return; }
+  if (state !== 'play') return;
+  if (FN.phase === 'call') { FN.callT += dt; FN.callI = Math.min(FN_CALLS[FN.night - 1].length - 1, Math.floor(FN.callT / 4.2)); if (FN.callT > FN_CALLS[FN.night - 1].length * 4.2 + .6) FN.phase = 'play'; }
+  FN.t += dt;
+  if (FN.t >= FN_HOUR * 6) return fnWin();
+  // sfeer
+  FN.amb -= dt; if (FN.amb <= 0) { FN.amb = 2.3; if (!save.mute && audio()) { tone(55, 52, 2.6, 'sine', .045); if (Math.random() < .25) fnSnd('creak'); } }
+  // stroom
+  if (!FN.dark) {
+    const use = 1 + (FN.doorL ? 1 : 0) + (FN.doorR ? 1 : 0) + (FN.lightL ? 1 : 0) + (FN.lightR ? 1 : 0) + (FN.cam ? 1 : 0);
+    FN.power -= dt * (.085 + FN.night * .012) * use * (FN.phase === 'call' ? .3 : 1);
+    if (FN.power <= 0) { FN.power = 0; FN.dark = 1; FN.darkT = 4 + Math.random() * 6; FN.doorL = FN.doorR = FN.lightL = FN.lightR = FN.cam = false; tone(300, 40, 1.2, 'sawtooth', .12); }
+  } else {   // stroom op: Basel komt je opzoeken met een muziekdoosje
+    FN.darkT -= dt; FN.dark += dt;
+    if (FN.darkT < 0 && !FN.boxed) { FN.boxed = true; fnSnd('box'); FN.darkT = 3.4 + Math.random() * 4; }
+    else if (FN.darkT < 0 && FN.boxed) return fnJump('basel');
+    return;
+  }
+  if (FN.phase === 'call') return;
+  // de figuren
+  for (const who of ['basel', 'obada']) {
+    const th = FN.th[who], P2 = FN_PATH[who], lvl = fnLvl(who === 'basel' ? 0 : 1);
+    if (lvl <= 0) continue;
+    if (th.pos === P2.door) {   // staat voor de deur
+      th.at -= dt;
+      if (who === 'obada' && Math.random() < dt * .35) fnSnd('hiss');
+      if (th.at <= 0) {
+        const closed = who === 'basel' ? FN.doorL : FN.doorR;
+        if (closed) { th.pos = P2.start; th.mt = P2.ivl * 1.5; fnSnd('knock'); FN.msg = who === 'basel' ? 'Basel is weggegaan…' : 'Obada is weggegaan…'; FN.msgT = 1.6; }
+        else return fnJump(who);
+      }
+      continue;
+    }
+    th.mt -= dt;
+    if (th.mt > 0) continue;
+    th.mt = P2.ivl * (.85 + Math.random() * .3);
+    const watched = FN.cam && FN.sel === th.pos;
+    if (who === 'obada' && watched) continue;   // Obada beweegt niet als je kijkt
+    if (Math.random() * 20 >= lvl) continue;
+    const opts = P2.next[th.pos], nx = opts[Math.floor(Math.random() * opts.length)];
+    if (FN.cam && (FN.sel === th.pos || FN.sel === nx)) { FN.stat = .8; FN.glitch = .5; }   // beeld valt even weg als er iets beweegt
+    th.pos = nx;
+    if (nx === P2.door) { th.at = Math.max(4, 9 - FN.night * .8) + Math.random() * 2; fnSnd('step'); }
+    else if (nx === 'gangL' || nx === 'gangR') fnSnd('step');
+  }
+  // oven
+  const hr = FN_LVL[FN.night - 1][2];
+  if (hr > 0) { FN.heat += dt * hr * (.8 + Math.random() * .4); if (FN.heat > 70 && Math.random() < dt * 1.2) fnSnd('fire'); if (FN.heat >= 100) return fnJump('forno'); }
+}
+const fnClock = () => { const h = Math.min(6, Math.floor(FN.t / FN_HOUR)); return `0${h}:00`; };
+// ---- tekenen
+function fnFigure(c, who, x, y, s, eyes) {   // donkere gestalte met gloeiende ogen
+  c.save(); c.translate(x, y); c.scale(s, s);
+  const ec = who === 'basel' ? '#ff2a1a' : '#5aff4a';
+  c.fillStyle = who === 'basel' ? '#0c0606' : '#060c07';
+  c.beginPath(); c.moveTo(-34, 0); c.quadraticCurveTo(-38, -70, -24, -96); c.quadraticCurveTo(-30, -150, 0, -158); c.quadraticCurveTo(30, -150, 24, -96); c.quadraticCurveTo(38, -70, 34, 0); c.closePath(); c.fill();
+  c.beginPath(); c.moveTo(-26, -96); c.lineTo(-44, -30); c.lineTo(-36, -28); c.lineTo(-20, -84); c.fill(); c.beginPath(); c.moveTo(26, -96); c.lineTo(46, -36); c.lineTo(38, -32); c.lineTo(20, -84); c.fill();
+  if (eyes) { c.shadowColor = ec; c.shadowBlur = 14; c.fillStyle = ec; c.beginPath(); c.ellipse(-9, -128, 4.5, 3, .15, 0, 7); c.ellipse(9, -128, 4.5, 3, -.15, 0, 7); c.fill(); c.shadowBlur = 0;
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(-9, -128, 1.2, 0, 7); c.arc(9, -128, 1.2, 0, 7); c.fill();
+    if (who === 'basel') { c.strokeStyle = 'rgba(255,60,40,.6)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-10, -112); c.quadraticCurveTo(0, -104, 10, -112); c.stroke(); } }
+  c.restore();
+}
+function fnRoom(c, k, x0, y0, w, h, time) {   // camerabeeld van een ruimte
+  c.save(); c.beginPath(); c.rect(x0, y0, w, h); c.clip();
+  c.fillStyle = '#121614'; c.fillRect(x0, y0, w, h);
+  const fy = y0 + h * .72;
+  c.fillStyle = '#1b201c'; c.fillRect(x0, fy, w, h - (fy - y0));
+  c.strokeStyle = 'rgba(160,190,170,.12)'; c.lineWidth = 1; for (let i = 0; i < 12; i++) { c.beginPath(); c.moveTo(x0 + w / 2 + (i - 6) * w * .02, fy); c.lineTo(x0 + w / 2 + (i - 6) * w * .18, y0 + h); c.stroke(); }
+  const g2 = '#2a322c', g3 = '#39433b';
+  if (k === 'zaal') { for (let i = 0; i < 3; i++) { const tx = x0 + w * (.18 + i * .3); c.fillStyle = g3; c.fillRect(tx - 40, fy - 30, 80, 8); c.fillStyle = g2; c.fillRect(tx - 34, fy - 22, 5, 26); c.fillRect(tx + 29, fy - 22, 5, 26); c.fillStyle = '#4a554c'; for (let k2 = 0; k2 < 8; k2++) c.fillRect(tx - 40 + k2 * 10, fy - 30, 5, 4); }
+    c.fillStyle = g2; rr(c, x0 + w * .4, y0 + h * .1, w * .2, h * .3, 40); c.fill(); }
+  else if (k === 'kast') { for (let r = 0; r < 4; r++) { c.fillStyle = g3; c.fillRect(x0 + w * .1, y0 + h * (.15 + r * .17), w * .8, 5); for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? g2 : '#303a32'; c.fillRect(x0 + w * (.12 + i * .085), y0 + h * (.15 + r * .17) - 22, 18, 22); } } }
+  else if (k === 'gangL' || k === 'gangR') { c.fillStyle = '#0a0c0b'; const dx = k === 'gangL' ? .62 : .38; c.fillRect(x0 + w * (dx - .07), y0 + h * .3, w * .14, fy - y0 - h * .3); c.strokeStyle = g3; c.lineWidth = 3; c.strokeRect(x0 + w * (dx - .07), y0 + h * .3, w * .14, fy - y0 - h * .3);
+    c.fillStyle = g2; c.fillRect(x0 + w * .1, y0 + h * .12, 50, 34); c.fillStyle = '#4a554c'; c.font = 'bold 8px sans-serif'; c.textAlign = 'center'; c.fillText(k === 'gangL' ? '← KANTOOR' : 'KANTOOR →', x0 + w * .1 + 25, y0 + h * .12 + 20); }
+  else if (k === 'kelder') { for (let i = 0; i < 4; i++) { const bx = x0 + w * (.15 + i * .23); c.fillStyle = g2; c.beginPath(); c.arc(bx, fy - 26, 26, 0, 7); c.fill(); c.strokeStyle = g3; c.lineWidth = 3; c.beginPath(); c.arc(bx, fy - 26, 18, 0, 7); c.stroke(); }
+    c.strokeStyle = g3; c.lineWidth = 6; c.beginPath(); c.arc(x0 + w / 2, y0 + h * .55, w * .45, Math.PI, 0); c.stroke(); }
+  else if (k === 'keuken') { c.fillStyle = g3; c.fillRect(x0, fy - 50, w, 8); c.fillStyle = g2; c.fillRect(x0, fy - 42, w, 42);
+    const ox = x0 + w * .46, oy = fy - 40, hot = FN.heat / 100; c.fillStyle = '#3a2a22'; c.beginPath(); c.arc(ox, oy, 46, Math.PI, 0); c.lineTo(ox + 46, oy + 40); c.lineTo(ox - 46, oy + 40); c.fill();
+    c.fillStyle = `rgba(255,${Math.round(140 - hot * 100)},40,${.2 + hot * .7})`; c.beginPath(); c.arc(ox, oy + 6, 22, Math.PI, 0); c.fill();
+    if (hot > .6) for (let i = 0; i < 4; i++) { c.fillStyle = `rgba(255,${120 + i * 30},30,${hot})`; c.beginPath(); c.moveTo(ox - 16 + i * 10, oy); c.quadraticCurveTo(ox - 12 + i * 10, oy - 20 - Math.sin(time / 60 + i) * 8 * hot, ox - 8 + i * 10, oy); c.fill(); } }
+  // de figuren in beeld
+  for (const who of ['basel', 'obada']) { const th = FN.th[who]; if (th.pos !== k) continue;
+    const px = x0 + w * (k === 'kast' ? .4 : k === 'keuken' ? .22 : k === 'kelder' ? .3 : who === 'basel' ? .3 : .45) + (k === 'gangL' ? w * .3 : 0) - (k === 'gangR' ? w * .1 : 0), sc = k.startsWith('gang') ? h / 260 : h / 330;
+    fnFigure(c, who, px, fy + 6, sc, true); }
+  // ruis, scanlijnen en vignet
+  for (let i = 0; i < 260; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * .07})`; c.fillRect(x0 + Math.random() * w, y0 + Math.random() * h, 2, 2); }
+  c.fillStyle = 'rgba(0,0,0,.18)'; for (let yy = y0; yy < y0 + h; yy += 3) c.fillRect(x0, yy, w, 1);
+  const vg = c.createRadialGradient(x0 + w / 2, y0 + h / 2, h * .3, x0 + w / 2, y0 + h / 2, w * .7); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.75)'); c.fillStyle = vg; c.fillRect(x0, y0, w, h);
+  if (FN.stat > 0) { for (let i = 0; i < 1400 * Math.min(1, FN.stat * 3); i++) { const v = Math.random() * 255 | 0; c.fillStyle = `rgb(${v},${v},${v})`; c.fillRect(x0 + Math.random() * w, y0 + Math.random() * h, 3, 2); } }
+  c.restore();
+}
+function fnJumpFace(c, who, k, time) {   // het gezicht dat op je af springt
+  c.save(); c.translate(W / 2 + (Math.random() - .5) * 30 * (1 - k * .3), H * .55 + (Math.random() - .5) * 24); const s = (.4 + Math.min(1, k * 3.2) * .78) * Math.min(W, H) / 330; c.scale(s, s);
+  if (who === 'forno') {
+    c.fillStyle = '#3a1a10'; c.beginPath(); c.arc(0, 10, 150, Math.PI, 0); c.lineTo(150, 120); c.lineTo(-150, 120); c.fill();
+    c.fillStyle = '#1a0804'; c.beginPath(); c.arc(0, 40, 95, Math.PI, 0); c.fill();
+    for (let i = 0; i < 9; i++) { c.fillStyle = ['#ff2a00', '#ff8a00', '#ffd23f'][i % 3]; c.beginPath(); c.moveTo(-90 + i * 22, 40); c.quadraticCurveTo(-80 + i * 22 + Math.sin(time / 30 + i) * 20, -80 - Math.random() * 80, -68 + i * 22, 40); c.fill(); }
+    c.fillStyle = '#ff2a00'; c.shadowColor = '#ff6a00'; c.shadowBlur = 30; c.beginPath(); c.ellipse(-50, -40, 20, 12, .2, 0, 7); c.ellipse(50, -40, 20, 12, -.2, 0, 7); c.fill(); c.shadowBlur = 0;
+    c.restore(); return;
+  }
+  const ec = who === 'basel' ? '#ff2a1a' : '#5aff4a', skin = who === 'basel' ? '#2a1612' : '#14201a';
+  c.fillStyle = '#050303'; c.beginPath(); c.ellipse(0, 20, 150, 175, 0, 0, 7); c.fill();   // capuchon
+  c.fillStyle = skin; c.beginPath(); c.ellipse(0, 10, 100, 130, 0, 0, 7); c.fill();
+  c.fillStyle = '#000'; c.beginPath(); c.ellipse(-40, -20, 30, 38, .2, 0, 7); c.ellipse(40, -20, 30, 38, -.2, 0, 7); c.fill();   // holle ogen
+  c.fillStyle = ec; c.shadowColor = ec; c.shadowBlur = 40; c.beginPath(); c.arc(-38, -16, 9, 0, 7); c.arc(38, -16, 9, 0, 7); c.fill(); c.shadowBlur = 0;
+  c.fillStyle = '#000'; c.beginPath(); c.moveTo(-70, 50); c.quadraticCurveTo(0, 30, 70, 50); c.quadraticCurveTo(50, 140, 0, 145); c.quadraticCurveTo(-50, 140, -70, 50); c.fill();   // open mond
+  c.fillStyle = '#e8e2c8'; for (let i = 0; i < 9; i++) { const tx = -62 + i * 15.5; c.beginPath(); c.moveTo(tx, 48 - Math.abs(i - 4) * -1); c.lineTo(tx + 7, 72); c.lineTo(tx + 14, 47); c.fill(); }
+  for (let i = 0; i < 7; i++) { const tx = -46 + i * 15; c.beginPath(); c.moveTo(tx, 136); c.lineTo(tx + 7, 112); c.lineTo(tx + 14, 136); c.fill(); }
+  c.restore();
+  if (k > .25) hudText(c, who === 'basel' ? 'BASEL' : 'OBADA', W / 2, H - 22, 30, 'center', '#fff');
+}
+function drawFnar(time) {
+  const c = ctx, L = fnLay();
+  if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+  c.fillStyle = '#000'; c.fillRect(-20, -20, W + 40, H + 40);
+  if (FN.phase === 'jump') {
+    const k = FN.jumpT; if (k < 1.4) { c.fillStyle = `rgba(120,0,0,${.4 + Math.random() * .3})`; c.fillRect(-20, -20, W + 40, H + 40); fnJumpFace(c, FN.jump, k, time);
+      for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(255,255,255,${Math.random() * .25})`; c.fillRect(Math.random() * W, Math.random() * H, 3, 2); } }
+    if (state === 'dead') drawRoyd(c, deadTimer);
+    return;
+  }
+  if (FN.phase === 'won') {
+    const a = Math.min(1, FN.jumpT * 1.5); c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+    c.globalAlpha = a; hudText(c, FN.jumpT < 1.4 ? '05:59' : '06:00', W / 2, H * .48, 64, 'center', '#fff'); hudText(c, `Nacht ${FN.night} overleefd`, W / 2, H * .62, 20, 'center', '#ffe14f'); c.globalAlpha = 1;
+    return;
+  }
+  const dk = FN.dark ? Math.min(1, FN.dark * 2) : 0;
+  // kantoor
+  const gl = c.createRadialGradient(W / 2, H * .45, 30, W / 2, H * .45, W * .6); gl.addColorStop(0, '#2a2420'); gl.addColorStop(1, '#0a0806'); c.fillStyle = gl; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#1a1512'; c.fillRect(0, H * .72, W, H * .28);   // vloer
+  c.strokeStyle = 'rgba(255,255,255,.04)'; for (let i = 0; i < 14; i++) { c.beginPath(); c.moveTo(i * W / 13, H * .72); c.lineTo(W / 2 + (i * W / 13 - W / 2) * 1.8, H); c.stroke(); }
+  // posters
+  c.save(); c.translate(W * .36, H * .22); c.rotate(-.04); c.fillStyle = '#3a3428'; c.fillRect(-46, -30, 92, 66); c.fillStyle = '#5a5040'; c.fillRect(-40, -24, 80, 40); if (head.complete) { c.globalAlpha = .55; c.drawImage(head, -14, -24, 28, 28 / HEAD_ASPECT * .6); c.globalAlpha = 1; } c.fillStyle = '#8a8070'; c.font = 'bold 7px Georgia'; c.textAlign = 'center'; c.fillText('MEDEWERKER VAN DE MAAND', 0, 28); c.restore();
+  c.save(); c.translate(W * .62, H * .2); c.rotate(.05); c.fillStyle = '#2e2a22'; c.fillRect(-40, -26, 80, 56); c.fillStyle = '#7a1a14'; c.font = 'bold 10px Georgia'; c.textAlign = 'center'; c.fillText('BLIJF', 0, -4); c.fillText('KALM', 0, 10); c.fillStyle = '#5a5040'; c.font = '7px Georgia'; c.fillText('en tel de dozen', 0, 22); c.restore();
+  // deuropeningen links en rechts
+  for (const s of ['L', 'R']) {
+    const left = s === 'L', dx = left ? W * .1 : W * .9, dw = W * .13, top = H * .14, bot = H * .78, lit = FN['light' + s] && !FN.dark;
+    c.fillStyle = '#050403'; c.fillRect(dx - dw / 2, top, dw, bot - top);
+    if (lit) { const lg = c.createLinearGradient(0, top, 0, bot); lg.addColorStop(0, 'rgba(200,190,140,.35)'); lg.addColorStop(1, 'rgba(120,110,80,.15)'); c.fillStyle = lg; c.fillRect(dx - dw / 2, top, dw, bot - top);
+      const who = left ? 'basel' : 'obada'; if (FN.th[who].pos === (left ? 'doorL' : 'doorR')) fnFigure(c, who, dx, bot, (bot - top) / 175, true); }
+    // deur zelf (schuift naar beneden)
+    const k = FN.doorAnim[s]; if (k > .02) { c.fillStyle = '#3a3a40'; c.fillRect(dx - dw / 2, top, dw, (bot - top) * k); c.fillStyle = '#2a2a30'; for (let yy = top + 8; yy < top + (bot - top) * k; yy += 14) c.fillRect(dx - dw / 2, yy, dw, 3); c.fillStyle = '#c8a020'; c.fillRect(dx - dw / 2, top + (bot - top) * k - 6, dw, 6); }
+    c.strokeStyle = '#3a3028'; c.lineWidth = 6; c.strokeRect(dx - dw / 2, top, dw, bot - top);
+  }
+  // bureau met monitor, ventilator en oven-lampje
+  c.fillStyle = '#2a1e16'; c.fillRect(W * .24, H * .66, W * .52, 18); c.fillStyle = '#1e1610'; c.fillRect(W * .26, H * .66 + 18, W * .48, H * .2);
+  c.fillStyle = '#111'; rr(c, W * .44, H * .46, W * .12, H * .19, 4); c.fill(); c.fillStyle = FN.dark ? '#000' : `rgba(60,90,70,${.5 + Math.sin(time / 300) * .1})`; c.fillRect(W * .45, H * .48, W * .1, H * .14);
+  const fx = W * .32, fyy = H * .58; c.fillStyle = '#222'; c.fillRect(fx - 3, fyy, 6, H * .08); c.strokeStyle = '#444'; c.lineWidth = 2; c.beginPath(); c.arc(fx, fyy, 24, 0, 7); c.stroke();
+  for (let i = 0; i < 3; i++) { const a = (FN.dark ? 0 : time / 40) + i * 2.09; c.fillStyle = '#3a3a3a'; c.beginPath(); c.ellipse(fx + Math.cos(a) * 11, fyy + Math.sin(a) * 11, 11, 5, a, 0, 7); c.fill(); }
+  if (FN_LVL[FN.night - 1][2] > 0) { const hot = FN.heat > 60, bl = hot && Math.sin(time / 120) > 0; c.fillStyle = bl ? '#ff3a1a' : '#4a1a10'; c.beginPath(); c.arc(W * .66, H * .63, 7, 0, 7); c.fill(); if (bl) { c.shadowColor = '#ff3a1a'; c.shadowBlur = 16; c.fill(); c.shadowBlur = 0; } hudText(c, 'OVEN', W * .66, H * .63 + 18, 9, 'center', 'rgba(255,255,255,.6)'); }
+  if (dk) { c.fillStyle = `rgba(0,0,0,${.88 * dk})`; c.fillRect(0, 0, W, H); if (FN.boxed) { const ey = Math.sin(time / 200) > -.3; if (ey) { c.fillStyle = '#ff2a1a'; c.shadowColor = '#ff2a1a'; c.shadowBlur = 14; c.beginPath(); c.arc(W * .1 - 7, H * .36, 3, 0, 7); c.arc(W * .1 + 7, H * .36, 3, 0, 7); c.fill(); c.shadowBlur = 0; } } }
+  // knoppen bij de deuren
+  if (!FN.dark) for (const s of ['L', 'R']) {
+    for (const [k, lab, on] of [['door', 'DEUR', FN['door' + s]], ['light', 'LICHT', FN['light' + s]]]) {
+      const r = L[k + s]; c.fillStyle = on ? (k === 'door' ? '#b0222b' : '#d8c040') : 'rgba(60,50,40,.9)'; rr(c, r.x, r.y, r.w, r.h, 8); c.fill(); c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 1.5; c.stroke();
+      c.fillStyle = on && k === 'light' ? '#2b1a12' : '#f7efdc'; c.font = 'bold 12px Georgia,serif'; c.textAlign = 'center'; c.fillText(lab, r.x + r.w / 2, r.y + r.h / 2 + 4);
+    }
+  }
+  // camera-tablet
+  if (FN.camK > .02) {
+    const k = FN.camK, ty = (1 - k) * H;
+    c.save(); c.translate(0, ty);
+    fnRoom(c, FN.sel, 0, 0, W, H, time);
+    c.fillStyle = '#e0301e'; if (Math.sin(time / 300) > 0) { c.beginPath(); c.arc(30, 30, 7, 0, 7); c.fill(); }
+    hudText(c, FN_ROOMS[FN.sel], 46, 36, 16, 'left', '#fff');
+    if (FN.glitch > 0) { c.fillStyle = 'rgba(0,0,0,.8)'; c.fillRect(0, 0, W, H); hudText(c, 'GEEN SIGNAAL', W / 2, H * .45, 22, 'center', '#ddd'); }
+    // plattegrond
+    const m = L.map; c.fillStyle = 'rgba(0,0,0,.55)'; rr(c, m.x - 6, m.y - 6, m.w + 12, m.h + 12, 8); c.fill(); c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 1; c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.75)'; rr(c, m.x + m.w * .43, m.y + m.h * .78, m.w * .14, m.h * .2, 3); c.fill(); c.fillStyle = '#000'; c.font = 'bold 8px sans-serif'; c.textAlign = 'center'; c.fillText('JIJ', m.x + m.w * .5, m.y + m.h * .91);
+    for (const kk in FN_MAP) { const r = L.mapBtn(kk), on = FN.sel === kk; c.fillStyle = on ? '#2fae5a' : 'rgba(60,60,60,.9)'; rr(c, r.x, r.y, r.w, r.h, 4); c.fill(); c.strokeStyle = '#ddd'; c.stroke();
+      c.fillStyle = '#fff'; c.font = 'bold 10px sans-serif'; c.fillText(FN_ROOMS[kk].split(' · ')[0], r.x + r.w / 2, r.y + 17); }
+    if (FN.sel === 'keuken' && FN_LVL[FN.night - 1][2] > 0) {
+      const b = L.gasBtn; c.fillStyle = 'rgba(0,0,0,.6)'; rr(c, b.x - 6, b.y - 34, b.w + 12, b.h + 40, 8); c.fill();
+      hudText(c, `Oven: ${Math.round(FN.heat)}%`, b.x + b.w / 2, b.y - 14, 14, 'center', FN.heat > 70 ? '#ff6a4a' : '#fff');
+      c.fillStyle = '#333'; c.fillRect(b.x, b.y - 8, b.w, 5); c.fillStyle = FN.heat > 70 ? '#e0301e' : '#f2c230'; c.fillRect(b.x, b.y - 8, b.w * FN.heat / 100, 5);
+      c.fillStyle = '#b0222b'; rr(c, b.x, b.y, b.w, b.h, 8); c.fill(); c.strokeStyle = '#fff'; c.stroke(); c.fillStyle = '#fff'; c.font = 'bold 15px Georgia,serif'; c.textAlign = 'center'; c.fillText('GAS UIT', b.x + b.w / 2, b.y + 28);
+    }
+    c.restore();
+  }
+  // onderbalk en info
+  if (!FN.dark && FN.phase === 'play') { c.fillStyle = FN.cam ? 'rgba(180,180,180,.35)' : 'rgba(255,255,255,.18)'; rr(c, W / 2 - 150, H - 40, 300, 30, 6); c.fill(); c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1.5; c.stroke(); hudText(c, FN.cam ? '▼ camera weg' : "▲ camera's", W / 2, H - 20, 14, 'center', '#fff'); }
+  hudText(c, fnClock(), W - 74, 32, 22, 'right', '#fff'); hudText(c, `Nacht ${FN.night}`, W - 74, 50, 12, 'right', 'rgba(255,255,255,.8)');
+  const use = 1 + (FN.doorL ? 1 : 0) + (FN.doorR ? 1 : 0) + (FN.lightL ? 1 : 0) + (FN.lightR ? 1 : 0) + (FN.cam ? 1 : 0);
+  hudText(c, `Stroom: ${Math.ceil(FN.power)}%`, 14, H - 30, 14, 'left', FN.power < 20 ? '#ff6a4a' : '#fff');
+  for (let i = 0; i < 5; i++) { c.fillStyle = i < use ? (i < 2 ? '#2fae5a' : i < 4 ? '#f2c230' : '#e0301e') : 'rgba(255,255,255,.15)'; c.fillRect(14 + i * 14, H - 22, 10, 12); }
+  if (FN.msgT > 0) hudText(c, FN.msg, W / 2, H * .3, 18, 'center', `rgba(255,255,255,${Math.min(1, FN.msgT)})`);
+  if (FN.phase === 'call') {   // telefoontje van de baas
+    const lines = FN_CALLS[FN.night - 1]; c.fillStyle = 'rgba(0,0,0,.72)'; rr(c, W * .15, H * .06, W * .7, 70, 10); c.fill();
+    hudText(c, '📞 De baas', W * .15 + 14, H * .06 + 20, 12, 'left', '#9fe08a');
+    c.fillStyle = '#fff'; c.font = 'italic 14px Georgia,serif'; c.textAlign = 'center'; wrapText(c, lines[FN.callI], W * .64).slice(0, 2).forEach((l, i) => c.fillText(l, W / 2, H * .06 + 40 + i * 17));
+    c.fillStyle = '#b0222b'; rr(c, W / 2 - 90, H - 54, 180, 40, 8); c.fill(); c.fillStyle = '#fff'; c.font = 'bold 14px Georgia,serif'; c.fillText('Ophangen', W / 2, H - 29);
+  }
+  if (FN.t < 6 && FN.phase === 'call') { c.fillStyle = `rgba(0,0,0,${Math.max(0, 1 - FN.t / 2)})`; c.fillRect(0, 0, W, H); hudText(c, `NACHT ${FN.night}`, W / 2, H / 2, 40, 'center', `rgba(255,255,255,${Math.max(0, 1 - FN.t / 3)})`); hudText(c, '00:00', W / 2, H / 2 + 30, 18, 'center', `rgba(255,255,255,${Math.max(0, 1 - FN.t / 3)})`); }
+}
+
 // ================= Menu's =================
 // ---- Klassement (per toestel)
 let boardTab = 'endless', lastScore = null;
@@ -2874,6 +3173,7 @@ function renderModes() {
     ['boss', 'Eindbaas Rodina', 'Ontwijk wat ze gooit en gooi worst terug.', save.bossBest ? save.bossBest.v.toFixed(1) + ' s' : save.bossWins ? save.bossWins + '×' : 'Nieuw', save.bossBest ? 'snelste winst' : save.bossWins ? 'verslagen' : '', () => { goFullscreen(); startRun('boss'); }],
     ['pizza', 'Pizzatoren', 'Kantel je telefoon en houd de stapel dozen in balans.', save.bestPizza ? save.bestPizza + ' dozen' : 'Nieuw', save.bestPizza ? 'record' : '', () => { tiltEnable(); goFullscreen(); startRun('pizza'); }],
     ['fles', "Joyce's flesjes", 'Tik de flesjes kapot. Niet op Roy tikken!', save.bestFles ? save.bestFles + ' flesjes' : 'Nieuw', save.bestFles ? 'record' : '', () => { goFullscreen(); startRun('shoot'); }],
+    ['fnar', "Five Nights at Roy's", 'Overleef de nachtdienst. Volume aan…', save.fnarBest ? 'Nacht ' + Math.min(5, save.fnarBest) : 'Nieuw', save.fnarBest ? (save.fnarBest >= 5 ? 'alles gehaald' : 'gehaald') : '', () => { goFullscreen(); audio(); startRun('fnar'); }],
     ['bake', 'Pizzeria Roy', 'Beleg, bak en serveer. Het wordt steeds drukker.', save.bestBake ? save.bestBake + " pizza's" : 'Nieuw', save.bestBake ? 'record' : '', () => { goFullscreen(); startRun('bake'); }],
     ['brawl', 'Knokken online', 'Tot zes spelers, ieder op zijn eigen telefoon.', '2 tot 6', 'spelers', () => showView('lobby')],
   ].forEach(([ic, n, d, p, sub, fn]) => {
@@ -2884,6 +3184,7 @@ function renderModes() {
       if (ic === 'run') { c.strokeStyle = 'rgba(176,34,43,.5)'; c.lineWidth = 5; c.lineCap = 'round'; for (let k = 0; k < 3; k++) { c.beginPath(); c.moveTo(8, 50 + k * 22); c.lineTo(34 - k * 6, 50 + k * 22); c.stroke(); } if (head.complete) c.drawImage(head, 34, 14, 82, 82 / HEAD_ASPECT); }
       else if (ic === 'boss') { if (rodinaA.complete) c.drawImage(rodinaA, 12, 16, 110, 110 / ROD_ASPECT); }
       else if (ic === 'pizza') { for (let k = 0; k < 6; k++) drawPizzaBox(c, 66 + Math.sin(k * 1.3) * 5 + k * 1.5, 112 - k * 17, (k - 2.5) * .03, k / 6, 92, 18); }
+      else if (ic === 'fnar') { const g = c.createRadialGradient(66, 60, 5, 66, 66, 62); g.addColorStop(0, '#4a1a12'); g.addColorStop(1, '#0a0404'); c.fillStyle = g; c.beginPath(); c.arc(66, 66, 60, 0, 7); c.fill(); fnFigure(c, 'basel', 66, 150, .8, true); }
       else if (ic === 'bake') { drawPizzaTop(c, 66, 66, 52, ['saus', 'kaas', 'salami', 'basilicum', 'champignon'], 1); }
       else if (ic === 'fles') { c.save(); c.translate(66, 72); c.scale(1.65, 1.65); drawBottle(c, -14, 4, -.35, 0, false); drawBottle(c, 15, 0, .3, 1, false); c.restore(); }
       else { c.save(); c.translate(66, 70); c.scale(2.6, 2.6); drawWorst(c, 0, 0, -.8, 30); drawWorst(c, 0, 0, .8, 30); c.restore(); c.fillStyle = '#f2c230'; c.strokeStyle = '#8a6410'; c.lineWidth = 2; c.beginPath(); for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, r = k % 2 ? 9 : 20; c.lineTo(66 + Math.cos(a) * r, 26 + Math.sin(a) * r); } c.closePath(); c.fill(); c.stroke(); }
@@ -2966,6 +3267,7 @@ cv.addEventListener('pointerdown', e => {
   const p = gamePt(e);
   if (mode === 'shoot') shootAt(p.x, p.y);
   else if (mode === 'bake') bkTap(p.x, p.y);
+  else if (mode === 'fnar') fnTap(p.x, p.y);
   else if (mode === 'boss' && p.x > W / 2) bossThrow();
   else { jumpPtrs.add(e.pointerId); syncHeld(); jumpPressed = true; jumpBuf = .14; }
 });
