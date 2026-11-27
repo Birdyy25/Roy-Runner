@@ -1922,11 +1922,40 @@ function fcStart() {
       v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.srcObject = st; v.play().catch(() => {});
       if (!FC.cv) { FC.cv = document.createElement('canvas'); FC.cv.width = FC.cv.height = FC_SIZE; FC.ctx = FC.cv.getContext('2d'); }
       FC.on = true;
+      v.onplaying = () => { if (FC.on && !FCV.rec && tok === FC.tok) fcStartVideo(); };
     }).catch(() => { FC.on = false; });
   } catch (e) { FC.on = false; }
 }
-function fcStop() { FC.tok++; if (FC.stream) FC.stream.getTracks().forEach(t => t.stop()); FC.stream = null; FC.on = false; if (FC.video) FC.video.srcObject = null; }
+const FCV = {cv: null, ctx: null, raf: 0, rec: null, chunks: [], t0: 0, map: [], mime: '', seed: 0, ready: null, pend: null};
+function fcPickMime() { if (typeof MediaRecorder === 'undefined') return null; for (const m of ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp8', 'video/webm']) { try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {} } return null; }
+function fcStartVideo() {   // camerabeeld vierkant en gespiegeld op een klein canvas, dat als echte video (30 fps) wordt opgenomen
+  const mime = fcPickMime(); if (!mime || !HTMLCanvasElement.prototype.captureStream || !BS) return false;
+  try {
+    if (!FCV.cv) { FCV.cv = document.createElement('canvas'); FCV.cv.width = FCV.cv.height = 128; FCV.ctx = FCV.cv.getContext('2d'); }
+    const draw = () => { if (!FC.on) return; const v = FC.video; if (v && v.videoWidth) { const sz = Math.min(v.videoWidth, v.videoHeight), c = FCV.ctx; c.save(); c.translate(128, 0); c.scale(-1, 1); c.drawImage(v, (v.videoWidth - sz) / 2, (v.videoHeight - sz) / 2, sz, sz, 0, 0, 128, 128); c.restore(); } FCV.raf = requestAnimationFrame(draw); };
+    draw();
+    const rec = new MediaRecorder(FCV.cv.captureStream(30), {mimeType: mime, videoBitsPerSecond: 90000});
+    FCV.rec = rec; FCV.chunks = []; FCV.mime = mime.split(';')[0]; FCV.seed = BS.seed; FCV.t0 = performance.now(); FCV.map = [[BS.step, 0]];
+    rec.ondataavailable = e => { if (e.data && e.data.size) FCV.chunks.push(e.data); };
+    rec.onstop = () => {
+      const seed = FCV.seed, map = FCV.map.slice(), mm = FCV.mime, blob = new Blob(FCV.chunks, {type: mm}), fr = new FileReader();
+      fr.onload = () => { const b64 = String(fr.result).split(',')[1] || ''; if (!b64) return; FCV.ready = {s: seed, m: mm, f: b64, map};
+        if (FCV.pend === seed) { FCV.pend = null; fcStoreVideo(FCV.ready); }
+        if (lastFight && lastFight.s === seed) lastFight.fcVideo = FCV.ready; };
+      fr.readAsDataURL(blob);
+    };
+    rec.start(1000);
+    return true;
+  } catch (e) { FCV.rec = null; return false; }
+}
+function fcStoreVideo(d) {   // nieuw record: video bewaren (online als hij binnen de grens past, en lokaal als dat lukt)
+  try { localStorage.setItem('roy_facecam', JSON.stringify(d)); } catch (e) { try { localStorage.removeItem('roy_facecam'); } catch (e2) {} }
+  if (d.f.length < FC_MAX) netFetch(`${DB_URL}/facecam/${myId()}.json`, {method: 'PUT', body: JSON.stringify(d)}).catch(() => {});
+  if (save.rodinaBest && save.rodinaBest.s === d.s) { save.rodinaBest.fc = 1; persist(); pushBest('rodina'); }
+}
+function fcStop() { FC.tok++; cancelAnimationFrame(FCV.raf); if (FCV.rec) { try { if (FCV.rec.state !== 'inactive') FCV.rec.stop(); } catch (e) {} FCV.rec = null; } if (FC.stream) FC.stream.getTracks().forEach(t => t.stop()); FC.stream = null; FC.on = false; if (FC.video) FC.video.srcObject = null; }
 function fcCapture(step) {   // beeldje k hoort bij rekenstap k*FC_EVERY, zo loopt het precies gelijk met de replay
+  if (FCV.rec) { if (step % 60 === 0) FCV.map.push([step, (performance.now() - FCV.t0) / 1000]); return; }
   const k = step / FC_EVERY, v = FC.video;
   if (!FC.on || !v || v.readyState < 2 || !v.videoWidth) { FC.frames[k] = FC.frames[k] || ''; return; }
   try {
@@ -1951,13 +1980,35 @@ function fcDelete() {   // facecam uit: ook je opgeslagen gezicht weghalen
   if (save.rodinaBest && save.rodinaBest.fc) { delete save.rodinaBest.fc; persist(); pushBest('rodina'); }
 }
 function fcLoadFor(rec) {   // bij het starten van een replay de bijbehorende facecam ophalen
+  if (rec.fcVideo) { if (BS && BS.replay) fcAttachVideo(rec.fcVideo); return; }
   if (rec.fcFrames) { if (BS && BS.replay) { BS.replay.fc = rec.fcFrames; BS.replay.fcE = FC_EVERY; FC.cache = {}; } return; }
-  const use = d => { if (d && d.s === rec.s && typeof d.f === 'string' && BS && BS.replay) { BS.replay.fc = d.f.split('|'); BS.replay.fcE = d.e || FC_EVERY; FC.cache = {}; } };
+  const use = d => { if (d && d.s === rec.s && d.m && typeof d.f === 'string' && BS && BS.replay) return fcAttachVideo(d);
+    if (d && d.s === rec.s && typeof d.f === 'string' && BS && BS.replay) { BS.replay.fc = d.f.split('|'); BS.replay.fcE = d.e || FC_EVERY; FC.cache = {}; } };
   if (rec.local) { try { use(JSON.parse(localStorage.getItem('roy_facecam') || 'null')); } catch (e) {} return; }
   if (rec.id && rec.fc) netFetch(`${DB_URL}/facecam/${rec.id}.json`).then(use).catch(() => {});
 }
+function fcAttachVideo(d) {
+  try { const bin = atob(d.f), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.setAttribute('playsinline', ''); el.preload = 'auto';
+    el.src = URL.createObjectURL(new Blob([u], {type: d.m})); el.load();
+    BS.replay.vid = {el, map: d.map || [[0, 0]]};
+  } catch (e) {}
+}
+function fcVideoTime(map, step) { let i = 0; while (i + 1 < map.length && map[i + 1][0] <= step) i++; return map[i][1] + (step - map[i][0]) / 120; }
 function drawFacecam(c) {   // rond bubbeltje linksonder, alleen in de replay
-  const R = BS && BS.replay; if (!R || !R.fc) return;
+  const R = BS && BS.replay; if (!R) return;
+  if (R.vid) {   // echte video, gelijk gehouden met de replay
+    const V2 = R.vid, el = V2.el; if (BS.step < V2.map[0][0]) return;
+    const vt = fcVideoTime(V2.map, BS.step);
+    if (state === 'play') { if (el.readyState >= 2 && Math.abs(el.currentTime - vt) > .3) { try { el.currentTime = vt; } catch (e) {} } if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
+    if (el.readyState < 2) return;
+    const r = 54, x = 72, y = H - 76;
+    c.save(); c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.arc(x + 3, y + 4, r + 4, 0, 7); c.fill(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip(); c.drawImage(el, x - r, y - r, r * 2, r * 2); c.restore();
+    c.strokeStyle = '#fff'; c.lineWidth = 3.5; c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
+    c.fillStyle = '#b0222b'; rr(c, x - 40, y + r - 8, 80, 18, 9); c.fill(); hudText(c, '● ' + R.name.slice(0, 10), x, y + r + 5, 11, 'center', '#fff');
+    return;
+  }
+  if (!R.fc) return;
   let k = Math.min(R.fc.length - 1, Math.floor(BS.step / R.fcE)); while (k > 0 && !R.fc[k]) k--;
   if (!R.fc[k]) return;
   let im = FC.cache[k]; if (!im) { im = FC.cache[k] = new Image(); im.src = 'data:image/jpeg;base64,' + R.fc[k]; }
@@ -2092,7 +2143,7 @@ function bossDamage(d, x, y, big) {
   if (!BS.replay) {
     save.bossWins = (save.bossWins || 0) + 1;
     const v = Math.round(BS.t * 10) / 10;
-    if (!save.rodinaBest || v < save.rodinaBest.v) { save.rodinaBest = {v, x: BS.lives, s: BS.seed, r: encodeRep(BS.rec), rv: REPLAY_VER}; if (save.facecam && fcSaveBest(BS.seed)) save.rodinaBest.fc = 1; }
+    if (!save.rodinaBest || v < save.rodinaBest.v) { save.rodinaBest = {v, x: BS.lives, s: BS.seed, r: encodeRep(BS.rec), rv: REPLAY_VER}; if (save.facecam) { if (FCV.rec && FCV.seed === BS.seed) FCV.pend = BS.seed; else if (fcSaveBest(BS.seed)) save.rodinaBest.fc = 1; } }
     addScore('rodina', v, BS.lives); bank();
   }
   [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, f, .25, 'triangle', .09, i * .12));
@@ -2111,7 +2162,7 @@ function updateBoss(dt) {
     deadTimer += dt;
     if (deadTimer > 1.9 && !BS.shown) {
       BS.shown = true;
-      lastFight = BS.replay ? lastFight : {s: BS.seed, r: encodeRep(BS.rec), steps: BS.step, n: save.name || 'Roy', fcFrames: fcHasContent(FC.frames) ? Array.from(FC.frames, x => x || '') : null};
+      lastFight = BS.replay ? lastFight : {s: BS.seed, r: encodeRep(BS.rec), steps: BS.step, n: save.name || 'Roy', fcFrames: fcHasContent(FC.frames) ? Array.from(FC.frames, x => x || '') : null, fcVideo: FCV.ready && FCV.ready.s === BS.seed ? FCV.ready : null};
       $('last10Btn').style.display = (BS.replay ? BS.replay.full : lastFight) ? '' : 'none';
       if (BS.replay) showResult(state === 'win' ? 'Replay: Rodina verslagen' : 'Replay afgelopen', `Replay van <b>${BS.replay.name}</b><br>${state === 'win' ? 'Alle drie de fases in ' + fmtT(BS.t) : 'Tot fase ' + BS.stage + ' gekomen'}`);
       else if (state === 'win') showResult('Rodina verslagen!', `Alle drie de fases in ${fmtT(BS.t)}${save.rodinaBest && save.rodinaBest.v >= Math.round(BS.t * 10) / 10 && save.rodinaBest.s === BS.seed ? ' · nieuw record!' : save.rodinaBest ? ' · record ' + fmtT(save.rodinaBest.v) : ''}<br>Met nog ${BS.lives} ${BS.lives === 1 ? 'hartje' : 'hartjes'} over<br>🌭 +${worstCount} worstjes`);
@@ -2131,7 +2182,7 @@ function bossStep(dt) {
   else { tap = BS.qJump; thr = BS.qThrow; BS.qJump = BS.qThrow = false; const h = held, th = throwPtrs.size > 0;
     if (tap) BS.rec.push([BS.step, 'J']); if (thr) BS.rec.push([BS.step, 'T']); if (h !== BS.inHold) { BS.inHold = h; BS.rec.push([BS.step, h ? 'H' : 'U']); }
     if (th !== !!BS.inThrow) { BS.inThrow = th; BS.rec.push([BS.step, th ? 'A' : 'B']); } }
-  if (!BS.replay && BS.step % FC_EVERY === 0) fcCapture(BS.step);
+  if (!BS.replay && (BS.step % FC_EVERY === 0 || BS.step % 60 === 0)) fcCapture(BS.step);
   if (tap) BS.jb = .3;   // springbuffer: ook een tik net vóór de landing telt
   if (thr || BS.inThrow) bossThrow();
   const px = W * .2;
@@ -2227,10 +2278,10 @@ function bossStage1(dt) {
 // ---------- fase 2: op straat met de Vespa (stormt op je af zoals Bowser, of springt over je heen)
 function bossStage2(dt) {
   const V = BS.v, px = W * .2, park = W * .8, lowHp = BS.hp < BS.hpMax * .45, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
-  V.t += dtR; V.throwT = Math.max(0, V.throwT - dt); V.wheelie += ((V.mode === 'rev' && V.hop ? 1 : 0) - V.wheelie) * Math.min(1, dt * 8);
+  V.t += dtR; V.throwT = Math.max(0, V.throwT - dt); if (V.ramp) V.ramp.t += dt; V.wheelie += ((V.mode === 'rev' && V.hop ? 1 : 0) - V.wheelie) * Math.min(1, dt * 8);
   for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 18 * dt; } BS.clouds = BS.clouds.filter(q => q.life > 0);
   if (fz && (V.mode === 'charge' || V.mode === 'rev')) {   // bevroren tijdens een aanval: ze glijdt terug naar haar plek en staat daar bevroren
-    if (V.x < -60 || V.x > W + 60) V.x = W + 170; V.mode = 'enter'; V.h = 0; V.charges = 0; V.loops++;
+    if (V.x < -60 || V.x > W + 60) V.x = W + 170; V.mode = 'enter'; V.h = 0; V.charges = 0; V.loops++; V.ramp = null;
   }
   if (V.mode === 'enter') { V.x += (park - V.x) * Math.min(1, dt * 3.2); if (Math.abs(V.x - park) < 4) { V.x = park; V.mode = (V.loops % 3 === 2) ? 'dizzy' : 'park'; V.t = 0; V.shots = 0; if (V.mode === 'dizzy') { tone(500, 200, .5, 'triangle', .07); popText('DUIZELIG!', park, groundY - 230, '#ffe14f', 22); } } }
   else if (V.mode === 'park') {   // staat stil: gooit vapebommen en helmen, kwetsbaar
@@ -2243,7 +2294,7 @@ function bossStage2(dt) {
           onLand: z => { tone(90, 40, .3, 'sawtooth', .12); shake = 6; for (const dir of [-1, 1]) { BS.hz.push({type: 'wave', x: z.x, y: 0, vx: dir * (lowHp ? 580 : 520), w: 34, h: 40, harm: true, life: 2.2}); BS.hz.push({type: 'wave', x: z.x + dir * 300, y: 0, vx: dir * (lowHp ? 520 : 460), w: 34, h: 40, harm: true, life: 2.2, d2: 1}); } for (let i = 0; i < 8; i++) BS.clouds.push({x: z.x + (Math.random() - .5) * 50, y: -10 - Math.random() * 30, r: 14 + Math.random() * 12, vy: -30, life: 1.1, max: 1.1}); }});
       } else BS.hz.push({type: 'helm', x: V.x - 40, y: -12, vx: -(lowHp ? 600 : 520), w: 34, h: 30, rot: 0, vr: -10, harm: true, kill: true});
     }
-    if (V.t > dur) { V.mode = 'rev'; V.t = 0; V.hop = BS.rng() < (lowHp ? .5 : .38); tone(110, 220, .9, 'sawtooth', .07); }
+    if (V.t > dur) { V.mode = 'rev'; V.t = 0; V.hop = BS.rng() < (lowHp ? .5 : .38); V.ramp = V.hop ? {x: px + 190, t: 0} : null; if (V.hop) V.throwT = .35; tone(110, 220, .9, 'sawtooth', .07); }
   }
   else if (V.mode === 'rev') {   // gas geven: waarschuwing
     if (!V.hop && Math.random() < dt * 40) BS.clouds.push({x: V.x + 64 + Math.random() * 10, y: -20, r: 7 + Math.random() * 9, vy: -18, life: .55, max: .55});   // gas geven: rook uit de uitlaat
@@ -2251,16 +2302,22 @@ function bossStage2(dt) {
   }
   else if (V.mode === 'charge') {
     V.x += V.vx * dtR;
-    if (V.hop) { const d = (V.x - px) / 190; V.h = Math.abs(d) < 1 ? 175 * (1 - d * d) : 0; } else V.h = 0;
+    if (V.hop && V.ramp) {   // de schans op, dan in een boog over Roy heen
+      const rx = V.ramp.x;
+      if (V.x > rx + RAMP_L) V.h = 0;
+      else if (V.x > rx) V.h = RAMP_H * (rx + RAMP_L - V.x) / RAMP_L;
+      else { const d = (V.x - px) / 190; V.h = Math.abs(d) < 1 ? RAMP_H + 160 * (1 - d * d) : Math.max(0, RAMP_H - (px - 190 - V.x) * .6); }
+    } else V.h = 0;
     // de Vespa zelf is gevaarlijk (rechthoek rond de scooter)
     const vy = -V.h, hit = V.x - 58 < px + 13 && V.x + 58 > px - 13 && vy - 56 < BS.py - 2 && vy > BS.py - 92;
     if (hit && BS.inv <= 0 && BS.fx.curry <= 0) { bossHurtPlayer(); if (state !== 'play') return; }
-    if (V.x < -170) { V.x = W + 170; V.h = 0; const again = V.charges < (lowHp ? 3 : 2); /* meerdere aanvallen achter elkaar, steeds willekeurig springen of blijven staan */ if (again) { V.mode = 'rev'; V.t = .1; V.hop = BS.rng() < .5; } else { V.mode = 'enter'; V.loops++; V.charges = 0; } }
+    if (V.x < -170) { V.x = W + 170; V.h = 0; V.ramp = null; const again = V.charges < (lowHp ? 3 : 2); /* meerdere aanvallen achter elkaar, steeds willekeurig springen of blijven staan */ if (again) { V.mode = 'rev'; V.t = .1; V.hop = BS.rng() < .5; V.ramp = V.hop ? {x: px + 190, t: 0} : null; } else { V.mode = 'enter'; V.loops++; V.charges = 0; } }
   }
   else if (V.mode === 'dizzy') { if (V.t > 2.6) { V.mode = 'park'; V.t = 0; V.shots = 0; } }
   BS.cyc = V.mode === 'dizzy' ? 'stun' : 'rest';
 }
 // ---------- fase 3: Giga-Rodina in de wijnkelder (eindvorm zoals in Cuphead)
+const RAMP_L = 70, RAMP_H = 34;   // schans: plank van 70 breed, 34 hoog aan de kant van Roy
 const G_ATT = [['lowbolt', 'rings'], ['highbolt', 'barrels'], ['combo', 'rings'], ['combo', 'barrels'], ['rings', 'highbolt']];
 function bossStage3(dt) {
   const G = BS.g, px = W * .2, rage = BS.hp < BS.hpMax * .35, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
@@ -2475,11 +2532,20 @@ function drawBoss(time) {
   if (BS.stage === 1) drawRodina(c, W * .8, time);
   else if (BS.stage === 2) {
     const V = BS.v, mv = V.mode === 'charge' || V.mode === 'enter';
+    if (V.ramp) {   // plank op een stapel pizzadozen, valt eerst uit de lucht
+      const rx = V.ramp.x, k = Math.min(1, V.ramp.t / .35), dropY = -(1 - k * k) * 260 + (k >= 1 ? 0 : 0);
+      c.save(); c.translate(0, dropY);
+      for (let i = 0; i < 2; i++) drawPizzaBox(c, rx + 14, -8 - i * 15, 0, .3 + i * .3, 40, 15);
+      c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(rx + RAMP_L / 2, 2, RAMP_L / 2 + 6, 5, 0, 0, 7); c.fill();
+      c.fillStyle = '#a8743c'; c.strokeStyle = '#5a3a1a'; c.lineWidth = 2; c.beginPath(); c.moveTo(rx - 4, -RAMP_H - 4); c.lineTo(rx + RAMP_L + 4, 0); c.lineTo(rx + RAMP_L + 4, -5); c.lineTo(rx - 4, -RAMP_H - 10); c.closePath(); c.fill(); c.stroke();
+      c.strokeStyle = 'rgba(90,58,26,.6)'; c.lineWidth = 1; for (let i = 1; i < 4; i++) { const xx = rx + i * RAMP_L / 4; c.beginPath(); c.moveTo(xx, -RAMP_H * (1 - i / 4) - 9); c.lineTo(xx, -RAMP_H * (1 - i / 4) - 3); c.stroke(); }
+      c.restore();
+    }
     c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(V.x, 0, 60, 8, 0, 0, 7); c.fill();
     const shk = V.mode === 'rev' && !V.hop ? (Math.random() - .5) * 3 : 0;
     c.save(); c.translate(V.x + shk, -V.h); c.rotate(V.mode === 'charge' ? (V.h > 0 ? (V.x > px ? -.25 : .25) : -.04) : 0);
     c.save(); c.translate(6, -52); c.scale(.62, .62); c.rotate(V.mode === 'charge' || (V.mode === 'rev' && !V.hop) ? -.35 : 0); drawRodina(c, 0, time); c.restore();
-    drawVespa(c, 0, 0, V.wheelie, time, mv, V.hop && (V.mode === 'rev' || V.mode === 'charge') ? 1 : 0);
+    drawVespa(c, 0, 0, V.wheelie, time, mv, 0);
     c.restore();
     if (V.mode === 'dizzy') for (let i = 0; i < 4; i++) { const a = time / 180 + i * 1.57; hudText(c, '★', V.x + Math.cos(a) * 30, -240 + Math.sin(a) * 8, 14, 'center', '#ffe14f'); }
   }
@@ -2543,7 +2609,7 @@ function drawBoss(time) {
         c.globalAlpha = .95; c.fillStyle = '#f7efdc'; c.font = `bold ${i ? 15 : 18}px Georgia,serif`; c.textAlign = 'center'; c.fillText(lab, bxx, H - r - 3); c.globalAlpha = 1; });
       if (BS.t < 8) { c.strokeStyle = 'rgba(255,255,255,.18)'; c.setLineDash([6, 8]); c.lineWidth = 2; c.beginPath(); c.moveTo(W * .6, 90); c.lineTo(W * .6, H - 10); c.stroke(); c.setLineDash([]); }
     }
-    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Lees de Vespa goed: niet alles moet je overspringen · gooi als ze stilstaat' : 'Kijk waar de straal oplaadt · gooi in haar mond als die opengaat', BS.hint);
+    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Let op wat ze op straat legt · gooi als ze stilstaat' : 'Kijk waar de straal oplaadt · gooi in haar mond als die opengaat', BS.hint);
   }
   if (BS.splat > 0) { c.globalAlpha = Math.min(1, BS.splat) * .85;
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#f3e3c3' : '#5a3219'; c.beginPath(); c.ellipse(rnd(i + 3) * W, rnd(i + 40) * H * .8 + (1.8 - BS.splat) * 30, 40 + rnd(i) * 50, 30 + rnd(i + 9) * 40, rnd(i) * 3, 0, Math.PI * 2); c.fill(); }
@@ -3357,7 +3423,7 @@ function renderModes() {
     b.onclick = () => { audio(); fn(); }; el.appendChild(b);
   });
 }
-function toMenu() { fcStop(); theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
+function toMenu() { if (BS && BS.replay && BS.replay.vid) { try { BS.replay.vid.el.pause(); } catch (e) {} } fcStop(); theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
 
 function renderLevels() {
   const el = $('dishes'); el.innerHTML = '';
