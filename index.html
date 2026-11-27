@@ -214,6 +214,7 @@ const cv = $('c'), ctx = cv.getContext('2d'), stage = $('stage'), ui = $('ui');
 const SAVE_KEY = 'hoofddash_v2';
 let save = {wallet: 0, owned: ['roy'], skin: 'roy', best: {}, mute: false};
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.owned) save = Object.assign(save, s); } catch (e) {}
+function cleanOldBoss() { if (save.bossBest || (save.board && save.board.boss)) { delete save.bossBest; if (save.board) delete save.board.boss; persist(); } }
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 
 // ================= Skins =================
@@ -3129,13 +3130,13 @@ async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onde
   const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: REPLAY_VER} : null) : null;
   if (!rec) return;
   rec.t = {'.sv': 'timestamp'};
-  try { await netFetch(`${DB_URL}/best/${kind}/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}); } catch (e) {}
+  try { await netFetch(`${DB_URL}/best/${kind === 'rodina' ? 'boss' : kind}/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}); } catch (e) {}
 }
 async function loadOnline() {
   onlineState = 'loading'; renderBoard();
   try {
     await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(pushBest));
-    const [a, b, pz, fl] = await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
+    const [a, b, pz, fl] = await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(k => netFetch(`${DB_URL}/best/${k === 'rodina' ? 'boss' : k}.json`).catch(() => null)));
     if (a === null && b === null) throw new Error('offline');
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
@@ -3147,7 +3148,7 @@ async function loadOnline() {
       }
       return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
-    online = {endless: list(a, false), rodina: list(b, true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
+    online = {endless: list(a, false), rodina: list(Object.fromEntries(Object.entries(b || {}).filter(([k, e]) => e && e.rv === REPLAY_VER)), true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
 }
@@ -3914,7 +3915,7 @@ if (window.visualViewport) { visualViewport.addEventListener('resize', resize); 
 window.addEventListener('scroll', () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); });
 addEventListener('resize', resize); addEventListener('orientationchange', () => { setTimeout(resize, 200); setTimeout(resize, 700); }); resize();
 
-buildLevel(0); setMute(); refreshWallet(); renderModes();
+cleanOldBoss(); buildLevel(0); setMute(); refreshWallet(); renderModes();
 if ((save.name || '').length < 2) showView('name', true);
 let last = performance.now();
 function loop(now) {
