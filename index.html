@@ -3446,7 +3446,7 @@ async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onde
   const nm = (save.name || 'Roy').slice(0, 12) || 'Roy';
   const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: save.rodinaBest.rv || 2, fc: save.rodinaBest.fc ? 1 : 0} : null) : null;
   if (!rec) return;
-  rec.t = {'.sv': 'timestamp'};
+  rec.t = {'.sv': 'timestamp'}; rec.b = BOARD_RESET;   // alleen scores van de nieuwe versie tellen mee
   for (const path of kind === 'rodina' ? ['boss', 'rodina'] : [kind])   // Rodina: naar beide plekken, welke de regels ook toestaan
     try { await netFetch(`${DB_URL}/best/${path}/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}); } catch (e) {}
 }
@@ -3460,7 +3460,7 @@ async function loadOnline() {
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
       for (const k of Object.keys(o || {})) {
-        const e = Object.assign({id: k}, o[k]); if (!e || typeof e.v !== 'number' || typeof e.n !== 'string' || !(e.t >= BOARD_RESET)) continue;
+        const e = Object.assign({id: k}, o[k]); if (!e || typeof e.v !== 'number' || typeof e.n !== 'string' || e.b !== BOARD_RESET || !(e.t >= BOARD_RESET)) continue;
         const key = e.n.trim().toLowerCase(); if (!key) continue;
         const cur = best.get(key), better = !cur || (asc ? e.v < cur.v : e.v > cur.v) || (e.v === cur.v && k === me);
         if (better) best.set(key, Object.assign(e, {mine: (cur && cur.mine) || k === me})); else if (k === me) cur.mine = true;
