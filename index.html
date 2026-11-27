@@ -142,7 +142,7 @@
     <div class="card" id="v-board">
       <div class="row" style="justify-content:space-between"><span class="h script">Klassement</span>
         <label class="nm">Naam <input id="nameIn" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></label></div>
-      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="rodina">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button></div>
+      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="rodina">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button><button class="tab" data-tab="bar">Barman</button></div>
       <div class="row" style="justify-content:space-between;font-size:.72em;margin:.1em .2em"><i id="boardNote"></i><button id="scopeBtn" class="tab" style="flex:0 0 auto;font-size:1em;padding:.15em .8em"></button></div>
       <div id="boardWrap"><div id="boardList"></div><div id="boardMore">▼ veeg voor meer</div></div>
       <div class="row" style="gap:.5em"><button class="btn alt small" data-go="main">‹ Terug</button><button class="btn small" id="shareBtn">Deel mijn record</button></div>
@@ -228,7 +228,7 @@ try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.owned) sa
 function cleanOldBoss() { if (save.bossBest || (save.board && save.board.boss)) { delete save.bossBest; if (save.board) delete save.board.boss; persist(); } }
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
 const BOARD_RESET = 1795815562557;   // klassementen opnieuw begonnen: oudere scores tellen niet meer mee
-if ((save.boardReset || 0) < BOARD_RESET) { save.board = {}; for (const k of ['bestDist', 'bestPizza', 'bestFles', 'bestBake', 'rodinaBest']) delete save[k]; save.boardReset = BOARD_RESET; try { localStorage.removeItem('roy_facecam'); } catch (e) {} persist(); }
+if ((save.boardReset || 0) < BOARD_RESET) { save.board = {}; for (const k of ['bestDist', 'bestPizza', 'bestFles', 'bestBake', 'bestBar', 'rodinaBest']) delete save[k]; save.boardReset = BOARD_RESET; try { localStorage.removeItem('roy_facecam'); } catch (e) {} persist(); }
 
 // ================= Skins =================
 const SKINS = [
@@ -555,6 +555,7 @@ function startRun(m, i, seed) {
   else if (m === 'boss') startBoss();
   else if (m === 'brawl') { levelIdx = i === undefined ? 1 : i; startBrawl(levelIdx); }
   else if (m === 'shoot') startShoot();
+  else if (m === 'bar') startBar();
   else if (m === 'pizza') startPizza();
   else if (m === 'fnar') startFnar();
   showView(null); $('pauseBtn').style.display = 'flex';
@@ -635,7 +636,7 @@ function italStep(i, t) {
 }
 let song = null, mIdx = 0, mNext = 0;
 setInterval(() => {
-  const want = save.mute || !ac || !mBus ? null : state === 'menu' ? 'ital' : state === 'pause' || mode === 'fnar' ? null : 'metal';
+  const want = save.mute || !ac || !mBus ? null : state === 'menu' ? 'ital' : state === 'pause' || mode === 'fnar' ? null : mode === 'bar' ? 'ital' : 'metal';
   if (want !== song) { song = want; mIdx = 0; mNext = 0; }
   if (!song) return;
   try {
@@ -699,6 +700,7 @@ const ROY_QUOTES = {
   balk: ["Bukken, Roy. BUKKEN.", "Roy is te groot voor dit restaurant.", "Dat bord hing er niet voor niks, Roy."],
   tafel: ["Roy wilde aanschuiven. Niet zo.", "Onder de tafel, Roy, niet erdoorheen.", "De tafel was gereserveerd. Niet voor Roy."],
   vlieg: ["Holy Roy? Eerder holy moly.", "Engeltjes vliegen ook weleens tegen een salami.", "Roy's vleugels hadden geen rijbewijs."],
+  bar: ["Roy tapte vooral schuim.", "De gasten wilden een drankje, geen verhaal.", "Barman Roy, ober van de maand. Niet deze maand.", "Roy haalde de kurk eruit. En de gasten ook."],
   boss: [
     "Rodina: 'Roy, eet je bord eerst leeg.'",
     "Rodina's tiramisu wint weer.",
@@ -950,6 +952,7 @@ function update(dt) {
   if (state !== 'menu' && mode === 'brawl') updateBrawl(dt);
   else if (state !== 'menu' && mode === 'boss') updateBoss(dt);
   else if (state !== 'menu' && mode === 'shoot') updateShoot(dt);
+  else if (state !== 'menu' && mode === 'bar') updateBar(dt);
   else if (state !== 'menu' && mode === 'pizza') updatePizza(dt);
   else if (state !== 'menu' && mode === 'fnar') updateFnar(dt);
   else if (state === 'play') {
@@ -1528,6 +1531,7 @@ function draw(time) {
   if (mode === 'brawl') { drawBrawl(time); c.restore(); return; }
   if (mode === 'boss') { drawBoss(time); c.restore(); return; }
   if (mode === 'shoot') { drawShoot(time); c.restore(); return; }
+  if (mode === 'bar') { drawBar(time); c.restore(); return; }
   if (mode === 'pizza') { drawPizza(time); c.restore(); return; }
   if (mode === 'fnar') { drawFnar(time); c.restore(); return; }
   const prog = Math.min(1, P.x / END_X), camX = P.x - W * 0.28;
@@ -2775,6 +2779,331 @@ function drawBoss(time) {
   drawTapFx(c);
 }
 
+// ================= Barman Roy (zoals de sushibar in Dave the Diver) =================
+// gasten schuiven aan met een bestelling en een geduldsrondje; tik een gast om zijn drankje te maken.
+// drie gasten die boos weglopen = af.
+let BAR = null;
+const BAR_ING = {
+  bitter: {n: 'Bitter', c: '#e8452a'}, prosecco: {n: 'Prosecco', c: '#f3e08a'}, soda: {n: 'Spuitwater', c: '#cfeaf5'}, gin: {n: 'Gin', c: '#e8f4f0'},
+  vermout: {n: 'Vermout', c: '#8a2a2a'}, mirto: {n: 'Mirto', c: '#5a1a5a'}, tonic: {n: 'Tonic', c: '#dff4ff'}, limoncello: {n: 'Limoncello', c: '#f4e040'},
+  vlier: {n: 'Vlierbloesem', c: '#eef0c0'}, munt: {n: 'Munt', c: '#3aa04a', leaf: 1}, ijs: {n: 'IJs', c: '#bfe6ff', ice: 1}, sinaas: {n: 'Sinaasappel', c: '#ff9a2a', fruit: 1},
+};
+const BAR_COCK = [
+  {n: 'Spritz', r: ['bitter', 'prosecco', 'soda'], x: 'sinaas', c: '#ff6a2a'},
+  {n: 'Negroni', r: ['gin', 'vermout', 'bitter'], x: 'sinaas', c: '#a8281e'},
+  {n: 'Mirto Tonic', r: ['mirto', 'tonic', 'ijs'], x: 'munt', c: '#8a4a9a'},
+  {n: 'Limoncello Spritz', r: ['limoncello', 'prosecco', 'soda'], x: 'munt', c: '#f0d840'},
+  {n: 'Hugo', r: ['vlier', 'prosecco', 'munt'], x: 'ijs', c: '#dfeab0'},
+];
+const BAR_SKIN = ['#f2c9a8', '#e0a888', '#c88a68', '#8a5a3c', '#5a3a28'], BAR_HAIRC = ['#2a1a10', '#5a3a1a', '#a87a3a', '#e8c878', '#8a8a8a', '#b03a1a', '#1a1a1a'];
+const BAR_SHIRT = ['#2a5a8a', '#b0222b', '#2fae5a', '#e8a020', '#6a3a8a', '#f7efdc', '#333a44', '#d86a9a'];
+function barSeats() { const n = BAR.seats; return Array.from({length: n}, (_, i) => W * (n === 4 ? .3 + i * .19 : .34 + i * .24)); }
+function startBar() {
+  theme = THEMES[0]; themeFrom = null; themeT = 0; worstCount = 0; banked = false; clearWorld(); P = null; particles = [];
+  BAR = {t: 0, lives: 3, served: 0, cust: [], next: 1.2, seats: 3, job: null, streak: 0, shown: false, roy: 0, ptr: null};
+  save.barSeen = save.barSeen || {};
+  state = 'play'; deadTimer = 0;
+}
+function barDiff() { return Math.min(1, BAR.t / 150); }
+function barSpawn() {
+  const xs = barSeats(), taken = new Set(BAR.cust.map(c => c.seat)); const free = xs.map((_, i) => i).filter(i => !taken.has(i));
+  if (!free.length) return false;
+  const seat = free[Math.floor(Math.random() * free.length)], d = barDiff(), r = Math.random();
+  const drink = BAR.t < 12 ? (BAR.served < 2 ? 'bier' : 'wijn') : r < .38 ? 'bier' : r < .66 ? 'wijn' : 'cocktail';
+  const vip = BAR.t > 25 && Math.random() < .1;
+  const base = {bier: 21, wijn: 27, cocktail: 33}[drink] * (1 - .38 * d) * (vip ? .72 : 1);
+  BAR.cust.push({seat, x: W + 60, drink, cock: Math.floor(Math.random() * BAR_COCK.length), pat: base, patMax: base, st: 'come', t: 0, vip,
+    look: {skin: BAR_SKIN[Math.floor(Math.random() * 5)], hair: Math.floor(Math.random() * 6), hc: BAR_HAIRC[Math.floor(Math.random() * 7)], shirt: BAR_SHIRT[Math.floor(Math.random() * 8)], glasses: Math.random() < .25, big: .9 + Math.random() * .2}});
+  return true;
+}
+function barStrike(cu) {
+  BAR.lives--; BAR.streak = 0; shake = 10; flash = .5; tone(220, 80, .4, 'sawtooth', .1); popText(cu.vip ? 'Rodina is boos!' : 'Hmpf!', cu.x, H * .3, '#ff8a7a', 22);
+  if (BAR.lives <= 0) {
+    state = 'dead'; deadTimer = 0; BAR.job = null; deathQuote = pickQuote('bar');
+    if (BAR.served > (save.bestBar || 0)) save.bestBar = BAR.served;
+    addScore('bar', BAR.served); bank();
+  }
+}
+function updateBar(dt) {
+  if (state === 'dead') {
+    deadTimer += dt;
+    if (deadTimer > 1.7 && !BAR.shown) { BAR.shown = true; showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>${BAR.served} ${BAR.served === 1 ? 'drankje' : 'drankjes'} geserveerd · record ${save.bestBar || 0}<br>🌭 +${worstCount} worstjes fooi`); }
+    return;
+  }
+  if (state !== 'play') return;
+  const d = barDiff(); BAR.t += dt; BAR.roy = Math.max(0, BAR.roy - dt);
+  if (BAR.t > 70 && BAR.seats === 3 && !BAR.cust.length) BAR.seats = 4;
+  BAR.next -= dt; if (BAR.next <= 0) { BAR.next = (barSpawn() ? 7 - 4 * d : 1) + Math.random() * 1.5; }
+  const xs = barSeats();
+  for (const cu of BAR.cust) {
+    cu.t += dt; const sx = xs[cu.seat] !== undefined ? xs[cu.seat] : W * .5;
+    if (cu.st === 'come') { cu.x += (sx - cu.x) * Math.min(1, dt * 4); if (Math.abs(cu.x - sx) < 3) { cu.x = sx; cu.st = 'wait'; cu.t = 0; tone(880, 990, .08, 'triangle', .04); } }
+    else if (cu.st === 'wait') { cu.pat -= dt; if (cu.pat <= 0) { cu.st = 'angry'; cu.t = 0; if (BAR.job && BAR.job.cu === cu) BAR.job = null; barStrike(cu); if (state !== 'play') return; } }
+    else if (cu.st === 'drink') { if (cu.t > 1.6) { cu.st = 'leave'; cu.t = 0; } }
+    else if (cu.st === 'angry') { if (cu.t > .9) { cu.st = 'leave'; cu.t = 0; } }
+    else if (cu.st === 'leave') { cu.x += 420 * dt; if (cu.x > W + 80) cu.gone = true; }
+  }
+  BAR.cust = BAR.cust.filter(c => !c.gone);
+  if (BAR.job) barJobTick(dt);
+}
+// ---------- drankjes maken
+function barStartJob(cu) {
+  const J = {cu, kind: cu.drink, step: '', t: 0, lvl: 0, hold: false, fail: 0, q: 0};
+  if (J.kind === 'bier') { J.step = 'pour'; J.rate = .34 + .2 * barDiff(); }
+  else if (J.kind === 'wijn') { J.step = 'screw'; J.ang = 0; J.lastA = null; J.screw = 0; J.pull = 0; J.rate = .3 + .15 * barDiff(); }
+  else { J.step = 'mix'; const C = BAR_COCK[cu.cock]; J.recipe = C.r.concat(barDiff() > .45 ? [C.x] : []); J.got = 0; J.mist = 0; J.cols = [];
+    const decoys = Object.keys(BAR_ING).filter(k => !J.recipe.includes(k)).sort(() => Math.random() - .5).slice(0, 6 - J.recipe.length);
+    J.shelf = J.recipe.concat(decoys).sort(() => Math.random() - .5); J.shake = 0; }
+  BAR.job = J; tone(600, 800, .06, 'triangle', .04);
+}
+function barPanel() { return {x: W * .14, y: 64, w: W * .72, h: H - 76}; }
+function barQuality(q, J) {   // q: 2 = perfect, 1 = goed
+  const cu = J.cu, P2 = barPanel(); let tip = {bier: 2, wijn: 3, cocktail: 4}[J.kind] + (q === 2 ? 2 : 0) + (cu.pat / cu.patMax > .5 ? 1 : 0);
+  if (q === 2) BAR.streak++; else BAR.streak = 0;
+  if (BAR.streak >= 3) tip += BAR.streak - 2;
+  if (cu.vip) tip *= 3;
+  worstCount += tip; BAR.served++; BAR.roy = .6;
+  cu.st = 'drink'; cu.t = 0; cu.got = J.kind === 'cocktail' ? BAR_COCK[cu.cock].c : J.kind;
+  popText(q === 2 ? 'Perfect!' : 'Lekker!', cu.x, H * .2, q === 2 ? '#ffe14f' : '#fff', q === 2 ? 26 : 20);
+  popText(`+${tip} 🌭`, cu.x, H * .2 + 26, '#9fe08a', 18);
+  if (BAR.streak >= 3) popText(`Reeks ×${BAR.streak}`, W / 2, P2.y + 20, '#9fe08a', 20);
+  [660, 880, 1100].forEach((f, i) => tone(f, f, .12, 'triangle', .06, i * .07));
+  BAR.job = null;
+}
+function barJobFail(msg) { const J = BAR.job; tone(200, 90, .3, 'sawtooth', .08); shake = 6; popText(msg, W / 2, H * .45, '#ff8a7a', 24); J.redo = .7; }
+function barJobTick(dt) {
+  const J = BAR.job; J.t += dt;
+  if (J.redo > 0) { J.redo -= dt; if (J.redo <= 0) { const cu = J.cu; barStartJob(cu); BAR.job.fail = J.fail + 1; } return; }
+  if (J.kind === 'bier' && J.step === 'pour' && J.hold) {
+    J.ht = (J.ht || 0) + dt; J.lvl += J.rate * (1 + J.ht * .5) * dt;
+    if (Math.random() < dt * 30) particles.push({x: J.gx + (Math.random() - .5) * 6, y: J.gy0, vx: 0, vy: 200, g: 400, life: .2, size: 3, col: '#f0b030'});
+    if (J.lvl > 1.02) { J.hold = false; barJobFail('Overgelopen!'); }
+  }
+  if (J.kind === 'wijn' && J.step === 'pour' && J.hold) { J.lvl += J.rate * dt; if (J.lvl > .72) { J.hold = false; barJobFail('Gemorst!'); } }
+  if (J.kind === 'wijn' && J.step === 'pull' && !J.drag) J.pull = Math.max(0, J.pull - dt * 1.5);   // kurk zakt terug als je loslaat
+  if (J.kind === 'cocktail' && J.step === 'pour') { J.lvl = Math.min(1, J.lvl + dt * 1.8); if (J.lvl >= 1 && J.t > .7) barQuality(J.mist === 0 && J.t2 < 6 ? 2 : 1, J); }
+}
+function barDown(p, id) {
+  if (!BAR || state !== 'play') return;
+  const J = BAR.job, P2 = barPanel();
+  if (!J) {   // gast kiezen
+    let best = null, bd = 1e9; for (const cu of BAR.cust) { if (cu.st !== 'wait') continue; const d = Math.hypot(cu.x - p.x, (H * .38) - p.y); if (Math.abs(cu.x - p.x) < 70 && p.y < H * .72 && d < bd) { bd = d; best = cu; } }
+    if (best) barStartJob(best); return;
+  }
+  if (J.redo > 0) return;
+  if (Math.hypot(p.x - (P2.x + P2.w - 18), p.y - (P2.y + 50)) < 26) { BAR.job = null; tone(400, 300, .06, 'sine', .04); return; }   // terug naar de bar
+  BAR.ptr = {id, x: p.x, y: p.y, x0: p.x, y0: p.y, t: performance.now()};
+  if ((J.kind === 'bier' || J.kind === 'wijn') && J.step === 'pour') { J.hold = true; J.ht = 0; }
+  else if (J.kind === 'bier' && J.step === 'scrape') { J.sx0 = p.x; }
+  else if (J.kind === 'wijn' && J.step === 'screw') { J.lastA = null; }
+  else if (J.kind === 'wijn' && J.step === 'pull') { J.drag = true; J.dy0 = p.y; J.p0 = J.pull; }
+  else if (J.kind === 'cocktail' && J.step === 'mix') {
+    const n = J.shelf.length, sw = P2.w / n;
+    for (let i = 0; i < n; i++) { const bx = P2.x + sw * (i + .5), by = P2.y + P2.h - 46; if (Math.abs(p.x - bx) < sw / 2 && Math.abs(p.y - by) < 56) {
+      const k = J.shelf[i];
+      if (k === J.recipe[J.got]) { J.got++; J.cols.push(BAR_ING[k].c); tone(500 + J.got * 120, 700 + J.got * 120, .08, 'triangle', .05); burst(P2.x + P2.w * .78, P2.y + P2.h * .38, 6, [BAR_ING[k].c, '#fff'], 160);
+        if (J.got >= J.recipe.length) { J.step = 'shake'; J.shake = 0; } }
+      else { J.mist++; tone(180, 120, .15, 'square', .06); shake = 5; popText('Fout!', bx, by - 60, '#ff8a7a', 18); if (J.mist >= 2) barJobFail('Verpest! Opnieuw…'); }
+      break; } }
+  }
+  else if (J.kind === 'cocktail' && J.step === 'shake') { J.lastY = p.y; J.lastX = p.x; }
+}
+function barMove(p, id) {
+  const J = BAR && BAR.job; if (!J || !BAR.ptr || BAR.ptr.id !== id || J.redo > 0) return;
+  const P2 = barPanel();
+  if (J.kind === 'wijn' && J.step === 'screw') {   // rondjes draaien rond de kurk
+    const cx = P2.x + P2.w * .5, cy = P2.y + P2.h * .42, a = Math.atan2(p.y - cy, p.x - cx);
+    if (Math.hypot(p.x - cx, p.y - cy) > 18) { if (J.lastA !== null) { let da = a - J.lastA; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2; J.ang += da; J.screw = Math.min(1, Math.abs(J.ang) / (Math.PI * 2 * 2.5)); if (Math.random() < .3) tone(1200 + J.screw * 600, 1100, .02, 'square', .015); } J.lastA = a; }
+    if (J.screw >= 1) { J.step = 'pull'; J.pull = 0; tone(700, 900, .1, 'triangle', .05); }
+  }
+  else if (J.kind === 'wijn' && J.step === 'pull' && J.drag) {
+    J.pull = Math.max(0, Math.min(1, J.p0 + (p.y - J.dy0) / 150));
+    if (J.pull >= 1) { J.step = 'pour'; J.lvl = 0; J.drag = false; tone(400, 1600, .12, 'square', .08); burst(P2.x + P2.w * .5, P2.y + P2.h * .2, 12, ['#d8b070', '#7a1020', '#fff'], 300); BAR.ptr = null; }
+  }
+  else if (J.kind === 'bier' && J.step === 'scrape') {
+    if (Math.abs(p.x - J.sx0) > 110) { burst(J.gx, J.gTop, 14, ['#fff', '#f8f0d8'], 240); tone(900, 500, .1, 'triangle', .05); barQuality(J.q, J); BAR.ptr = null; }
+  }
+  else if (J.kind === 'cocktail' && J.step === 'shake') {
+    if (J.lastY !== undefined) { J.shake += (Math.abs(p.y - J.lastY) + Math.abs(p.x - J.lastX) * .5) / 1500; if (Math.random() < .25 && ac && noiseBuf && !save.mute) noise(ac.currentTime, .05, .04, 3000); }
+    J.lastY = p.y; J.lastX = p.x; J.shk = (p.y - BAR.ptr.y0) * .4;
+    if (J.shake >= 1) { J.step = 'pour'; J.lvl = 0; J.t2 = J.t; J.t = 0; tone(660, 990, .15, 'triangle', .06); BAR.ptr = null; }
+  }
+}
+function barUp(id) {
+  const J = BAR && BAR.job; if (!BAR || !BAR.ptr || BAR.ptr.id !== id) return; BAR.ptr = null; if (!J || J.redo > 0) return;
+  if ((J.kind === 'bier' || J.kind === 'wijn') && J.step === 'pour' && J.hold) {
+    J.hold = false; const v = J.lvl;
+    if (J.kind === 'bier') { if (v < .84) barJobFail('Te weinig!'); else { J.q = v >= .9 && v <= .97 ? 2 : 1; J.step = 'scrape'; tone(700, 700, .06, 'sine', .04); } }
+    else { if (v < .36) barJobFail('Te weinig!'); else barQuality(v >= .42 && v <= .52 ? 2 : 1, J); }
+  }
+  if (J.kind === 'wijn' && J.step === 'pull') J.drag = false;
+  if (J.kind === 'cocktail') J.shk = 0;
+}
+// ---------- tekenen
+function drawPatron(c, cu, y, time) {
+  const L = cu.look, x = cu.x, mood = cu.st === 'angry' ? -1 : cu.st === 'drink' ? 1 : cu.st === 'wait' ? (cu.pat / cu.patMax > .5 ? .6 : cu.pat / cu.patMax > .25 ? 0 : -.6) : .5;
+  const bob = Math.sin(time / 300 + cu.seat) * 2 + (cu.st === 'come' || cu.st === 'leave' ? Math.abs(Math.sin(time / 90)) * -5 : 0), s = L.big;
+  c.save(); c.translate(x, y + bob); c.scale(s, s);
+  if (mood < 0 && cu.st === 'wait' && cu.pat / cu.patMax < .2) c.translate((Math.random() - .5) * 3, 0);
+  c.fillStyle = cu.vip ? '#1a1a1e' : L.shirt; rr(c, -38, -58, 76, 70, 22); c.fill();   // schouders
+  c.fillStyle = L.skin; c.fillRect(-8, -70, 16, 16);
+  if (cu.vip && rodina && rodina.complete && rodina.naturalWidth) { c.drawImage(rodina, -36, -140, 72, 72 / ROD_ASPECT); }
+  else {
+    if (L.hair === 1) { c.fillStyle = L.hc; rr(c, -26, -104, 52, 62, 18); c.fill(); }
+    c.fillStyle = L.skin; c.beginPath(); c.ellipse(0, -90, 22, 25, 0, 0, 7); c.fill();
+    c.fillStyle = L.hc;
+    if (L.hair === 0 || L.hair === 1) { c.beginPath(); c.ellipse(0, -104, 23, 14, 0, Math.PI, 0); c.fill(); }
+    else if (L.hair === 2) { c.beginPath(); c.ellipse(0, -104, 23, 13, 0, Math.PI, 0); c.fill(); c.beginPath(); c.arc(0, -120, 10, 0, 7); c.fill(); }
+    else if (L.hair === 3) { c.beginPath(); c.ellipse(0, -74, 18, 12, 0, 0, Math.PI); c.fill(); }   // baard
+    else if (L.hair === 4) { for (let i = 0; i < 7; i++) { c.beginPath(); c.arc(-20 + i * 6.6, -108 + Math.sin(i * 1.7) * 3, 8, 0, 7); c.fill(); } }
+    else { c.fillRect(-22, -112, 44, 8); c.beginPath(); c.moveTo(-14, -112); c.lineTo(14, -112); c.lineTo(8, -126); c.lineTo(-8, -126); c.fill(); }   // pet
+    c.fillStyle = '#222'; for (const ex of [-8, 8]) { c.beginPath(); c.arc(ex, -92, 2.6, 0, 7); c.fill(); }
+    c.strokeStyle = '#222'; c.lineWidth = 2; for (const ex of [-8, 8]) { c.beginPath(); c.moveTo(ex - 5, -99 - (mood < 0 ? -ex * .25 : 0)); c.lineTo(ex + 5, -99 + (mood < 0 ? -ex * .25 : 0)); c.stroke(); }
+    if (L.glasses) { c.strokeStyle = '#111'; c.lineWidth = 1.6; for (const ex of [-8, 8]) { c.beginPath(); c.arc(ex, -92, 6, 0, 7); c.stroke(); } }
+    c.strokeStyle = '#6a2a1a'; c.lineWidth = 2.2; c.beginPath(); if (mood > .2) c.arc(0, -82, 7, .2, Math.PI - .2); else if (mood < -.2) c.arc(0, -74, 6, Math.PI + .3, -.3); else { c.moveTo(-5, -79); c.lineTo(5, -79); } c.stroke();
+    if (mood < -.5) { c.fillStyle = 'rgba(224,48,30,.25)'; c.beginPath(); c.ellipse(0, -90, 22, 25, 0, 0, 7); c.fill(); }
+  }
+  if (cu.st === 'drink' && cu.got) { c.save(); c.translate(26, -52); c.rotate(-.5); drawDrinkIcon(c, cu.got === 'bier' || cu.got === 'wijn' ? cu.got : 'cocktail', 0, 0, .8, cu.got.startsWith && cu.got.startsWith('#') ? cu.got : null); c.restore(); }
+  c.restore();
+  if (cu.st === 'angry' || (cu.st === 'wait' && cu.pat / cu.patMax < .15)) for (let i = 0; i < 2; i++) { const k = ((time / 600 + i * .5) % 1); c.globalAlpha = 1 - k; c.fillStyle = '#eee'; c.beginPath(); c.arc(x + (i ? 18 : -18), y - 128 * s - k * 30, 6 + k * 8, 0, 7); c.fill(); c.globalAlpha = 1; }
+}
+function drawDrinkIcon(c, kind, x, y, s, col) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  if (kind === 'bier') { c.fillStyle = 'rgba(255,255,255,.35)'; rr(c, -12, -18, 24, 36, 4); c.fill(); c.fillStyle = '#f0a820'; rr(c, -10, -8, 20, 24, 3); c.fill(); c.fillStyle = '#fff8e8'; c.beginPath(); c.ellipse(-4, -10, 8, 6, 0, 0, 7); c.ellipse(5, -11, 7, 6, 0, 0, 7); c.fill(); c.strokeStyle = 'rgba(255,255,255,.8)'; c.lineWidth = 3; c.beginPath(); c.arc(14, 0, 7, -1.2, 1.2); c.stroke(); }
+  else if (kind === 'wijn') { c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 4); c.lineTo(0, 18); c.moveTo(-8, 18); c.lineTo(8, 18); c.stroke(); c.fillStyle = 'rgba(255,255,255,.3)'; c.beginPath(); c.moveTo(-11, -18); c.lineTo(11, -18); c.quadraticCurveTo(12, 6, 0, 6); c.quadraticCurveTo(-12, 6, -11, -18); c.fill(); c.fillStyle = '#8a1424'; c.beginPath(); c.moveTo(-10, -6); c.lineTo(10, -6); c.quadraticCurveTo(10, 5, 0, 5); c.quadraticCurveTo(-10, 5, -10, -6); c.fill(); }
+  else { c.fillStyle = 'rgba(255,255,255,.3)'; c.beginPath(); c.moveTo(-14, -16); c.lineTo(14, -16); c.lineTo(2, 0); c.lineTo(-2, 0); c.closePath(); c.fill(); c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 0); c.lineTo(0, 16); c.moveTo(-8, 16); c.lineTo(8, 16); c.stroke();
+    c.fillStyle = col || '#ff6a2a'; c.beginPath(); c.moveTo(-11, -13); c.lineTo(11, -13); c.lineTo(1.5, -2); c.lineTo(-1.5, -2); c.closePath(); c.fill(); c.fillStyle = '#ff9a2a'; c.beginPath(); c.arc(10, -15, 5, 0, 7); c.fill(); c.strokeStyle = '#2fae5a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-6, -20); c.lineTo(4, -6); c.stroke(); }
+  c.restore();
+}
+function drawIngBottle(c, k, x, y, s) {
+  const I = BAR_ING[k]; c.save(); c.translate(x, y); c.scale(s, s);
+  if (I.leaf) { c.fillStyle = I.c; for (let i = 0; i < 5; i++) { c.save(); c.rotate(-1 + i * .5); c.beginPath(); c.ellipse(0, -14, 6, 13, 0, 0, 7); c.fill(); c.restore(); } }
+  else if (I.ice) { c.fillStyle = 'rgba(70,90,110,.6)'; rr(c, -20, -14, 40, 28, 6); c.fill(); for (let i = 0; i < 4; i++) { c.fillStyle = 'rgba(220,245,255,.9)'; rr(c, -16 + (i % 2) * 16, -12 + Math.floor(i / 2) * 12, 13, 11, 3); c.fill(); } }
+  else if (I.fruit) { c.fillStyle = I.c; c.beginPath(); c.arc(0, 0, 15, 0, 7); c.fill(); c.strokeStyle = '#fff2d0'; c.lineWidth = 1.5; for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(i) * 13, Math.sin(i) * 13); c.stroke(); } }
+  else { c.fillStyle = 'rgba(20,10,5,.5)'; rr(c, -13, -20, 26, 44, 7); c.fill(); c.fillStyle = I.c; rr(c, -11, -18, 22, 40, 6); c.fill(); c.fillRect(-4.5, -36, 9, 18); c.fillStyle = '#3a2216'; c.fillRect(-5, -40, 10, 6);
+    c.fillStyle = 'rgba(255,255,255,.85)'; rr(c, -9, -4, 18, 14, 3); c.fill(); c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(-8, -14, 3, 30); }
+  c.restore();
+}
+function drawBar(time) {
+  const c = ctx, ty = H * .6;
+  if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+  const gy = groundY; groundY = ty + 10; drawWall(300, time); groundY = gy;
+  for (const cu of BAR.cust) drawPatron(c, cu, ty + 8, time);
+  // toog
+  const wg = c.createLinearGradient(0, ty, 0, H); wg.addColorStop(0, '#7a4424'); wg.addColorStop(1, '#3a1e0e');
+  c.fillStyle = wg; c.fillRect(-20, ty, W + 40, H - ty + 20); c.fillStyle = '#9a5a30'; c.fillRect(-20, ty - 6, W + 40, 12); c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(-20, ty - 6, W + 40, 2);
+  for (let i = 0; i < 8; i++) { c.fillStyle = 'rgba(0,0,0,.12)'; c.fillRect(i * W / 8, ty + 14, 2, H); }
+  // tap en flessen op de toog, Roy links
+  c.fillStyle = '#c8ccd4'; c.fillRect(W * .2 - 4, ty - 46, 8, 40); c.fillStyle = '#e0301e'; rr(c, W * .2 - 6, ty - 66, 12, 24, 4); c.fill();
+  drawGuy(c, W * .09, H + 40, 0, 0, true, save.skin, time, {stand: true, scale: 1.35, throwT: BAR.roy > 0 ? 1 - BAR.roy / .6 : 0});
+  // bestellingen
+  for (const cu of BAR.cust) {
+    if (cu.st !== 'wait') continue;
+    const bx = cu.x, by = ty - 150 * cu.look.big - 34, k = cu.pat / cu.patMax, sel = BAR.job && BAR.job.cu === cu;
+    c.fillStyle = sel ? '#fff6c8' : '#fff'; c.beginPath(); c.arc(bx, by, 26, 0, 7); c.fill(); c.beginPath(); c.moveTo(bx - 8, by + 22); c.lineTo(bx, by + 36); c.lineTo(bx + 8, by + 22); c.fill();
+    c.strokeStyle = k > .5 ? '#2fae5a' : k > .25 ? '#e8a020' : '#e0301e'; c.lineWidth = 5; c.beginPath(); c.arc(bx, by, 30, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); c.stroke();
+    drawDrinkIcon(c, cu.drink, bx, by + 2, .95, cu.drink === 'cocktail' ? BAR_COCK[cu.cock].c : null);
+    if (cu.vip) hudText(c, '★', bx + 22, by - 20, 16, 'center', '#ffe14f');
+  }
+  drawParticles(c);
+  if (BAR.job) drawBarJob(c, time);
+  drawHearts(c, BAR.lives, 12, 32);
+  hudText(c, `${BAR.served}`, W / 2, 36, 30, 'center'); hudText(c, BAR.served === 1 ? 'drankje' : 'drankjes', W / 2, 52, 11, 'center', 'rgba(255,255,255,.85)');
+  drawWorst(c, 98, 25, -0.3, 20); hudText(c, `× ${worstCount}`, 116, 32, 16);
+  if (!BAR.job && state === 'play' && BAR.t < 9) drawHint(c, 'Tik op een gast om zijn drankje te maken · laat niemand te lang wachten', Math.min(1, 9 - BAR.t));
+  if (flash > 0) { c.fillStyle = `rgba(255,240,220,${flash * .35})`; c.fillRect(-20, -20, W + 40, H + 40); }
+  if (state === 'dead') drawRoyd(c, deadTimer);
+}
+function drawBarJob(c, time) {
+  const J = BAR.job, P2 = barPanel(), cx = P2.x + P2.w / 2;
+  c.fillStyle = 'rgba(10,6,4,.5)'; c.fillRect(-20, -20, W + 40, H + 40);
+  // wachtende gasten bovenin, zodat je ziet wie haast heeft
+  let ix = W / 2 - (BAR.cust.length - 1) * 22;
+  for (const cu of BAR.cust) { if (cu.st === 'wait') { const k = cu.pat / cu.patMax; c.fillStyle = cu === J.cu ? 'rgba(255,240,180,.9)' : 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(ix, 74, 15, 0, 7); c.fill(); c.strokeStyle = k > .5 ? '#2fae5a' : k > .25 ? '#e8a020' : '#e0301e'; c.lineWidth = 3.5; c.beginPath(); c.arc(ix, 74, 17, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); c.stroke(); drawDrinkIcon(c, cu.drink, ix, 75, .5, cu.drink === 'cocktail' ? BAR_COCK[cu.cock].c : null); } ix += 44; }
+  const py = P2.y + 32, ph = P2.h - 32;
+  const g = c.createLinearGradient(0, py, 0, py + ph); g.addColorStop(0, '#5a3220'); g.addColorStop(1, '#2a160c');
+  c.fillStyle = g; rr(c, P2.x, py, P2.w, ph, 18); c.fill(); c.strokeStyle = '#c8945a'; c.lineWidth = 3; c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(P2.x + P2.w - 18, P2.y + 50, 14, 0, 7); c.fill(); hudText(c, '✕', P2.x + P2.w - 18, P2.y + 56, 15, 'center', '#f7efdc');
+  const title = J.kind === 'bier' ? 'Biertje tappen' : J.kind === 'wijn' ? 'Fles rode wijn' : BAR_COCK[J.cu.cock].n;
+  hudText(c, title, P2.x + 18, py + 26, 16, 'left', '#ffe7b0');
+  const seenKey = J.kind + J.step, seen = (save.barSeen[seenKey] || 0) < 3;
+  const hint = (t) => { if (seen) hudText(c, t, P2.x + P2.w - 42, py + 26, 12, 'right', 'rgba(255,255,255,.8)'); };
+  if (J.kind === 'bier') {
+    const gw = 80, gh = 150, gx = cx - 40, gb = py + ph - 28, top = gb - gh; J.gx = gx; J.gy0 = top - 40; J.gTop = gb - gh * Math.min(1, J.lvl);
+    c.fillStyle = '#c8ccd4'; c.fillRect(gx - 6, top - 64, 12, 30); c.fillRect(gx - 50, top - 72, 100, 10); c.fillStyle = '#e0301e'; c.save(); c.translate(gx + 34, top - 72); c.rotate(J.hold ? .5 : 0); rr(c, -6, -46, 12, 46, 5); c.fill(); c.restore();
+    if (J.hold) { c.fillStyle = '#f0b030'; c.fillRect(gx - 3, top - 34, 6, 34 + gh * (1 - J.lvl)); }
+    // glas
+    c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.moveTo(gx - gw / 2, top); c.lineTo(gx + gw / 2, top); c.lineTo(gx + gw / 2 - 8, gb); c.lineTo(gx - gw / 2 + 8, gb); c.closePath(); c.fill();
+    const L = Math.min(1.02, J.lvl), foam = Math.min(.16, L * .25), by2 = gb - gh * L;
+    c.save(); c.beginPath(); c.moveTo(gx - gw / 2, top - 10); c.lineTo(gx + gw / 2, top - 10); c.lineTo(gx + gw / 2 - 8, gb); c.lineTo(gx - gw / 2 + 8, gb); c.closePath(); c.clip();
+    const bg = c.createLinearGradient(0, by2, 0, gb); bg.addColorStop(0, '#f8c040'); bg.addColorStop(1, '#c87810'); c.fillStyle = bg; c.fillRect(gx - gw, by2 + gh * foam, gw * 2, gh);
+    c.fillStyle = '#fff8e8'; c.fillRect(gx - gw, by2, gw * 2, gh * foam + 1); for (let i = 0; i < 6; i++) { c.beginPath(); c.arc(gx - gw / 2 + 8 + i * 15, by2 + 2, 8, 0, 7); c.fill(); }
+    for (let i = 0; i < 8; i++) { c.fillStyle = 'rgba(255,255,255,.5)'; c.beginPath(); c.arc(gx - 30 + rnd(i) * 60, gb - ((time / 8 + rnd(i + 9) * gh) % (gh * Math.max(.01, L - foam))), 1.6, 0, 7); c.fill(); }
+    c.restore();
+    c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(gx - gw / 2, top); c.lineTo(gx - gw / 2 + 8, gb); c.lineTo(gx + gw / 2 - 8, gb); c.lineTo(gx + gw / 2, top); c.stroke();
+    // doelzone naast het glas
+    const z1 = gb - gh * .97, z2 = gb - gh * .84, zp1 = gb - gh * .97, zp2 = gb - gh * .9;
+    c.fillStyle = 'rgba(47,174,90,.45)'; c.fillRect(gx + gw / 2 + 8, z1, 12, z2 - z1); c.fillStyle = 'rgba(255,225,79,.9)'; c.fillRect(gx + gw / 2 + 8, zp1, 12, zp2 - zp1);
+    c.fillStyle = '#fff'; c.beginPath(); c.moveTo(gx + gw / 2 + 24, by2); c.lineTo(gx + gw / 2 + 34, by2 - 6); c.lineTo(gx + gw / 2 + 34, by2 + 6); c.fill();
+    if (J.step === 'scrape') { const sx = (BAR.ptr ? BAR.ptr.x : gx - 60), wob = Math.sin(time / 120) * 8; c.fillStyle = '#d8dde6'; c.save(); c.translate(BAR.ptr ? sx : gx - 70 + wob, J.gTop - 4); c.rotate(-.1); rr(c, -40, -4, 80, 7, 3); c.fill(); c.fillStyle = '#5a3a1a'; rr(c, 34, -5, 26, 9, 4); c.fill(); c.restore();
+      hint('Veeg het schuim eraf'); }
+    else hint('Houd ingedrukt om te tappen · laat los in het gele stuk');
+  } else if (J.kind === 'wijn') {
+    const bx = cx, cy = P2.y + P2.h * .42;
+    if (J.step !== 'pour') {
+      c.save(); c.translate(bx, cy + 113); drawWineBottleBig(c, 0, 0, 0, 1, .8); c.restore();
+      const cork = cy + 4 - J.pull * 46;
+      c.fillStyle = '#d8b070'; rr(c, bx - 7, cork, 14, 26, 3); c.fill();
+      // kurkentrekker
+      c.save(); c.translate(bx, cork - 8 + (1 - J.screw) * -10); c.strokeStyle = '#c8ccd4'; c.lineWidth = 3; c.beginPath(); for (let i = 0; i <= 20; i++) { const yy = i * 1.6, xx = Math.sin(i * .9 + J.ang * 2) * 5; i ? c.lineTo(xx, yy) : c.moveTo(xx, yy); } c.stroke();
+      c.fillStyle = '#5a3a1a'; rr(c, -30, -14, 60, 12, 6); c.fill(); c.restore();
+      if (J.step === 'screw') { c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 3; c.setLineDash([6, 8]); c.beginPath(); c.arc(bx, cy, 62, time / 300, time / 300 + Math.PI * 1.7); c.stroke(); c.setLineDash([]);
+        c.strokeStyle = '#ffe14f'; c.lineWidth = 6; c.beginPath(); c.arc(bx, cy, 74, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * J.screw); c.stroke(); hint('Draai rondjes met je vinger'); }
+      else { const ay = cy + 50 + Math.sin(time / 160) * 8; c.fillStyle = 'rgba(255,255,255,.6)'; c.beginPath(); c.moveTo(bx + 60, ay + 16); c.lineTo(bx + 50, ay); c.lineTo(bx + 70, ay); c.fill(); c.fillRect(bx + 57, ay - 26, 6, 26);
+        c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(bx + 84, cy - 40, 10, 120); c.fillStyle = '#ffe14f'; c.fillRect(bx + 84, cy - 40, 10, 120 * J.pull); hint('Trek de kurk eruit: veeg naar beneden'); }
+    } else {
+      const gx = cx - 30, gb = py + ph - 26, gh = 120, gw = 90, top = gb - gh - 50;
+      c.save(); c.translate(gx + 70, top - 40); c.rotate(J.hold ? -2.1 : -1.2); drawWineBottleBig(c, 0, 0, 0, 1, .55); c.restore();
+      if (J.hold) { c.fillStyle = '#7a1020'; c.fillRect(gx - 2, top - 20, 5, gh + 20 - gh * J.lvl * .9); }
+      c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = 3; c.beginPath(); c.moveTo(gx, gb - 50); c.lineTo(gx, gb); c.moveTo(gx - 26, gb); c.lineTo(gx + 26, gb); c.stroke();
+      c.save(); c.beginPath(); c.moveTo(gx - gw / 2, top); c.lineTo(gx + gw / 2, top); c.quadraticCurveTo(gx + gw / 2 + 4, gb - 40, gx, gb - 50); c.quadraticCurveTo(gx - gw / 2 - 4, gb - 40, gx - gw / 2, top); c.closePath();
+      c.fillStyle = 'rgba(255,255,255,.12)'; c.fill(); c.clip(); const wl = gb - 50 - gh * J.lvl; c.fillStyle = '#7a1020'; c.fillRect(gx - gw, wl, gw * 2, gh * 2); c.restore();
+      c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(gx - gw / 2, top); c.quadraticCurveTo(gx - gw / 2 - 4, gb - 40, gx, gb - 50); c.quadraticCurveTo(gx + gw / 2 + 4, gb - 40, gx + gw / 2, top); c.stroke();
+      const z = l => gb - 50 - gh * l; c.fillStyle = 'rgba(47,174,90,.45)'; c.fillRect(gx - gw / 2 - 24, z(.52), 12, z(.36) - z(.52)); c.fillStyle = 'rgba(255,225,79,.9)'; c.fillRect(gx - gw / 2 - 24, z(.52), 12, z(.42) - z(.52));
+      hint('Houd ingedrukt om te schenken · laat los in het gele stuk');
+    }
+  } else {
+    const C = BAR_COCK[J.cu.cock], n = J.shelf.length, sw = P2.w / n;
+    // recept
+    J.recipe.forEach((k, i) => { const rx = P2.x + 30 + i * 44, ry = py + 52; c.globalAlpha = i < J.got ? .35 : 1; drawIngBottle(c, k, rx, ry, .62); c.globalAlpha = 1; if (i < J.got) hudText(c, '✓', rx, ry + 6, 18, 'center', '#9fe08a'); if (i === J.got && J.step === 'mix') { c.strokeStyle = '#ffe14f'; c.lineWidth = 2; c.beginPath(); c.arc(rx, ry - 2, 22, 0, 7); c.stroke(); } });
+    // shaker
+    const sx = P2.x + P2.w * .78, sy = P2.y + P2.h * .38 + (J.shk || 0);
+    if (J.step !== 'pour') {
+      c.save(); c.translate(sx, sy); if (J.step === 'shake' && BAR.ptr) c.rotate(Math.sin(time / 40) * .15);
+      c.fillStyle = '#c8ccd4'; c.beginPath(); c.moveTo(-26, -40); c.lineTo(26, -40); c.lineTo(20, 50); c.lineTo(-20, 50); c.closePath(); c.fill(); c.fillStyle = '#e8ecf2'; rr(c, -18, -66, 36, 28, 6); c.fill(); c.fillStyle = '#a8acb4'; c.fillRect(-26, -42, 52, 6);
+      J.cols.forEach((col, i) => { c.fillStyle = col; c.globalAlpha = .9; c.fillRect(-19, 44 - (i + 1) * 18, 38, 18); }); c.globalAlpha = 1;
+      c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(-20, -34, 5, 80); c.restore();
+    }
+    if (J.step === 'mix') {
+      J.shelf.forEach((k, i) => { const bx = P2.x + sw * (i + .5), by = py + ph - 46; drawIngBottle(c, k, bx, by, .95); c.font = '10px Georgia,serif'; hudText(c, BAR_ING[k].n, bx, by + 34, 10, 'center', 'rgba(255,255,255,.8)'); });
+      hint('Tik de ingrediënten in de goede volgorde');
+    } else if (J.step === 'shake') {
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(sx + 44, sy - 60, 10, 120); c.fillStyle = '#ffe14f'; c.fillRect(sx + 44, sy + 60 - 120 * J.shake, 10, 120 * J.shake);
+      const ay = py + ph * .6 + Math.sin(time / 120) * 20; c.fillStyle = 'rgba(255,255,255,.5)'; c.beginPath(); c.moveTo(cx - 60, ay - 22); c.lineTo(cx - 70, ay - 8); c.lineTo(cx - 50, ay - 8); c.fill(); c.beginPath(); c.moveTo(cx - 60, ay + 22); c.lineTo(cx - 70, ay + 8); c.lineTo(cx - 50, ay + 8); c.fill();
+      hint('Shaken! Wrijf snel op en neer');
+    } else { c.save(); c.translate(cx, py + ph * .55); c.scale(3, 3); drawDrinkIcon(c, 'cocktail', 0, 0, 1, C.c); c.restore(); }
+  }
+  if (seen && !J.counted) { J.counted = true; save.barSeen[seenKey] = (save.barSeen[seenKey] || 0) + 1; }
+}
+function drawWineBottleBig(c, x, y, rot, open, s = 1) {
+  c.save(); c.translate(x, y); c.rotate(rot); c.scale(s, s);
+  c.fillStyle = '#1e3a22'; rr(c, -26, -60, 52, 120, 12); c.fill(); c.beginPath(); c.moveTo(-26, -50); c.quadraticCurveTo(-24, -84, -10, -92); c.lineTo(10, -92); c.quadraticCurveTo(24, -84, 26, -50); c.fill(); c.fillRect(-10, -136, 20, 48);
+  if (!open) { c.fillStyle = '#8a1424'; c.fillRect(-11, -140, 22, 22); }
+  c.fillStyle = '#f7efdc'; rr(c, -20, -24, 40, 44, 4); c.fill(); c.fillStyle = '#8a1424'; c.font = 'italic bold 11px Georgia,serif'; c.textAlign = 'center'; c.fillText('Cannonau', 0, -2); c.font = '8px Georgia,serif'; c.fillText('di Sardegna', 0, 10);
+  c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(-20, -50, 6, 100);
+  c.restore();
+}
+
 // ================= Salami schieten =================
 let SH = null;
 function drawSalami(c, x, y, rot, gold) {
@@ -3445,7 +3774,7 @@ async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klasseme
 }
 async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onder je eigen sleutel
   const nm = (save.name || 'Roy').slice(0, 12) || 'Roy';
-  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: save.rodinaBest.rv || 2, fc: save.rodinaBest.fc ? 1 : 0} : null) : null;
+  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bar' ? (save.bestBar ? {n: nm, v: save.bestBar} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: save.rodinaBest.rv || 2, fc: save.rodinaBest.fc ? 1 : 0} : null) : null;
   if (!rec) return;
   rec.t = {'.sv': 'timestamp'}; rec.b = BOARD_RESET;   // alleen scores van de nieuwe versie tellen mee
   for (const path of kind === 'rodina' ? ['boss', 'rodina'] : [kind])   // Rodina: naar beide plekken, welke de regels ook toestaan
@@ -3454,8 +3783,8 @@ async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onde
 async function loadOnline() {
   onlineState = 'loading'; renderBoard();
   try {
-    await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(pushBest));
-    const [a, b1, pz, fl, b2] = await Promise.all(['endless', 'boss', 'pizza', 'fles', 'rodina'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => undefined)));   // undefined = niet bereikbaar, null = nog leeg
+    await Promise.all(['endless', 'rodina', 'pizza', 'fles', 'bar'].map(pushBest));
+    const [a, b1, pz, fl, b2, br] = await Promise.all(['endless', 'boss', 'pizza', 'fles', 'rodina', 'bar'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => undefined)));   // undefined = niet bereikbaar, null = nog leeg
     const b = Object.assign({}, b1 || {}, b2 || {});   // beide plekken samen; dubbele namen worden hieronder samengevoegd
     if (a === undefined && b1 === undefined && b2 === undefined) throw new Error('offline');
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
@@ -3468,14 +3797,14 @@ async function loadOnline() {
       }
       return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
-    online = {endless: list(a, false), rodina: list(Object.fromEntries(Object.entries(b || {}).filter(([k, e]) => e && e.rv >= 1 && e.rv <= REPLAY_VER)), true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
+    online = {endless: list(a, false), rodina: list(Object.fromEntries(Object.entries(b || {}).filter(([k, e]) => e && e.rv >= 1 && e.rv <= REPLAY_VER)), true), pizza: list(pz, false), fles: list(fl, false), bar: list(br, false)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
 }
 function addScore(kind, v, extra) {
   if (kind === 'endless' && v < 10) return;
   save.board = save.board || {}; save.board[kind] = save.board[kind] || [];
-  if ((kind === 'pizza' || kind === 'fles' || kind === 'bake') && v < 1) return;
+  if ((kind === 'pizza' || kind === 'fles' || kind === 'bake' || kind === 'bar') && v < 1) return;
   const e = {n: (save.name || 'Roy').slice(0, 12), v, x: extra, d: new Date().toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'})};
   const L = save.board[kind]; L.push(e);
   L.sort(kind !== 'rodina' ? (a, b) => b.v - a.v : (a, b) => a.v - b.v);
@@ -3490,13 +3819,13 @@ function renderBoard() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === boardTab));
   $('scopeBtn').textContent = boardScope === 'online' ? 'Iedereen' : 'Dit toestel';
   $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per naam';
-  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', rodina: 'Nog niemand heeft alle drie de fases gehaald.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.', bake: "Nog geen pizza's geserveerd."}[boardTab]}</div>`;
+  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', rodina: 'Nog niemand heeft alle drie de fases gehaald.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.', bar: 'Nog geen drankjes geserveerd.', bake: "Nog geen pizza's geserveerd."}[boardTab]}</div>`;
   L.forEach((e, i) => {
     const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.mine : e === lastScore) ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = e.n;
     r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm);
     const dt = useOnline ? (e.t ? new Date(e.t).toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'}) : '') : (e.d || '');
-    r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'bake' ? e.v + " pizza's" : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
+    r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'bar' ? e.v + (e.v === 1 ? ' drankje' : ' drankjes') : boardTab === 'bake' ? e.v + " pizza's" : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
     if (boardTab === 'rodina') {   // replay terugkijken
       const rec = useOnline ? e : (save.rodinaBest && Math.abs(save.rodinaBest.v - e.v) < .05 ? Object.assign({n: save.name || 'Roy'}, save.rodinaBest) : null);
       if (rec && rec.r && rec.rv >= REPLAY_MIN && rec.rv <= REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
@@ -3552,6 +3881,7 @@ function renderModes() {
     ['boss', 'Eindbaas Rodina', 'Drie fases, drie plekken. Gooi worst terug.', save.rodinaBest ? fmtT(save.rodinaBest.v) : 'Nieuw', save.rodinaBest ? 'record' : '', () => { if (save.fcAsked) { goFullscreen(); startRun('boss'); } else showView('facecam', true); }],
     ['pizza', 'Pizzatoren', 'Kantel je telefoon en houd de stapel dozen in balans.', save.bestPizza ? save.bestPizza + ' dozen' : 'Nieuw', save.bestPizza ? 'record' : '', () => { tiltEnable(); goFullscreen(); startRun('pizza'); }],
     ['fles', "Joyce's flesjes", 'Tik de flesjes kapot. Niet op Roy tikken!', save.bestFles ? save.bestFles + ' flesjes' : 'Nieuw', save.bestFles ? 'record' : '', () => { goFullscreen(); startRun('shoot'); }],
+    ['bar', 'Barman Roy', 'Tap bier, ontkurk wijn en shake cocktails voor de gasten.', save.bestBar ? save.bestBar + ' drankjes' : 'Nieuw', save.bestBar ? 'record' : '', () => { goFullscreen(); startRun('bar'); }],
     ['fnar', "Five Nights at Roy's", 'Overleef de nachtdienst. Volume aan…', save.fnarBest ? 'Nacht ' + Math.min(5, save.fnarBest) : 'Nieuw', save.fnarBest ? (save.fnarBest >= 5 ? 'alles gehaald' : 'gehaald') : '', () => { goFullscreen(); audio(); startRun('fnar'); }],
     ['brawl', 'Knokken online', 'Tot zes spelers, ieder op zijn eigen telefoon.', '2 tot 6', 'spelers', () => showView('lobby')],
   ].forEach(([ic, n, d, p, sub, fn]) => {
@@ -3563,6 +3893,7 @@ function renderModes() {
       else if (ic === 'boss') { if (rodinaA.complete) c.drawImage(rodinaA, 12, 16, 110, 110 / ROD_ASPECT); }
       else if (ic === 'pizza') { for (let k = 0; k < 6; k++) drawPizzaBox(c, 66 + Math.sin(k * 1.3) * 5 + k * 1.5, 112 - k * 17, (k - 2.5) * .03, k / 6, 92, 18); }
       else if (ic === 'fnar') { const g = c.createRadialGradient(66, 60, 5, 66, 66, 62); g.addColorStop(0, '#4a1a12'); g.addColorStop(1, '#0a0404'); c.fillStyle = g; c.beginPath(); c.arc(66, 66, 60, 0, 7); c.fill(); fnFigure(c, 'basel', 66, 150, .8, true); }
+      else if (ic === 'bar') { c.fillStyle = '#5a3220'; c.fillRect(0, 92, 132, 40); c.save(); c.translate(44, 76); c.scale(2.4, 2.4); drawDrinkIcon(c, 'bier', 0, 0, 1); c.restore(); c.save(); c.translate(92, 74); c.scale(2.3, 2.3); drawDrinkIcon(c, 'cocktail', 0, 0, 1, '#ff6a2a'); c.restore(); }
       else if (ic === 'fles') { c.save(); c.translate(66, 72); c.scale(1.65, 1.65); drawBottle(c, -14, 4, -.35, 0, false); drawBottle(c, 15, 0, .3, 1, false); c.restore(); }
       else { c.save(); c.translate(66, 70); c.scale(2.6, 2.6); drawWorst(c, 0, 0, -.8, 30); drawWorst(c, 0, 0, .8, 30); c.restore(); c.fillStyle = '#f2c230'; c.strokeStyle = '#8a6410'; c.lineWidth = 2; c.beginPath(); for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, r = k % 2 ? 9 : 20; c.lineTo(66 + Math.cos(a) * r, 26 + Math.sin(a) * r); } c.closePath(); c.fill(); c.stroke(); }
       c.restore(); };
@@ -3674,6 +4005,7 @@ cv.addEventListener('pointerdown', e => {
   if (state !== 'play' || mode === 'brawl') return;
   const p = gamePt(e);
   if (mode === 'shoot') shootAt(p.x, p.y);
+  else if (mode === 'bar') barDown(p, e.pointerId);
   else if (mode === 'fnar') fnTap(p.x, p.y);
   else if (mode === 'boss' && BS && BS.replay) return;
   else if (mode === 'boss' && p.x > W / 2) BS.qThrow = true;
@@ -3684,10 +4016,10 @@ cv.addEventListener('pointerdown', e => {
 const jumpPtrs = new Set(), slidePtrs = new Set(); let keyJump = false, keySlide = false, jumpBuf = 0, slideBuf = 0, slideHeld = false;
 const SLIDE_BTN = {x: 64, dy: 62, r: 44};
 function syncHeld() { held = jumpPtrs.size > 0 || keyJump; slideHeld = slidePtrs.size > 0 || keySlide; }
-for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { jumpPtrs.delete(e.pointerId); slidePtrs.delete(e.pointerId); throwPtrs.delete(e.pointerId); pzPtrs.delete(e.pointerId); syncHeld(); });
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { if (mode === 'bar' && BAR) barUp(e.pointerId); jumpPtrs.delete(e.pointerId); slidePtrs.delete(e.pointerId); throwPtrs.delete(e.pointerId); pzPtrs.delete(e.pointerId); syncHeld(); });
 window.addEventListener('touchend', e => { if (!e.touches || e.touches.length === 0) { jumpPtrs.clear(); slidePtrs.clear(); syncHeld(); } }, {passive: true});
 window.addEventListener('blur', () => { jumpPtrs.clear(); slidePtrs.clear(); throwPtrs.clear(); keyJump = false; syncHeld(); });
-window.addEventListener('pointermove', e => { if (pzPtrs.has(e.pointerId)) pzPtrs.set(e.pointerId, gamePt(e).x); });
+window.addEventListener('pointermove', e => { if (pzPtrs.has(e.pointerId)) pzPtrs.set(e.pointerId, gamePt(e).x); if (mode === 'bar' && BAR) barMove(gamePt(e), e.pointerId); });
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (mode === 'pizza' && ['arrowleft', 'arrowright', 'a', 'd'].includes(e.key.toLowerCase())) { e.preventDefault(); pzKeys.add(e.key.toLowerCase()); return; }
