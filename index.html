@@ -73,6 +73,7 @@
   .tabs{gap:.4em;margin:.4em 0 .2em}
   .tab{flex:1;font-family:inherit;font-size:.7em;font-weight:700;padding:.3em;border-radius:1em;border:.1em solid var(--green);background:transparent;color:var(--green);cursor:pointer}
   .tab.on{background:var(--green);color:var(--cream)}
+  .brow .rp{flex:none;border:0;border-radius:50%;width:1.7em;height:1.7em;margin-left:.2em;background:var(--red);color:#fff;font-size:.72em;line-height:1;cursor:pointer;align-self:center}
   .brow{display:flex;align-items:baseline;gap:.5em;font-size:.86em;padding:.16em .3em;border-bottom:.06em dashed rgba(43,26,18,.22)}
   .brow .r{width:1.6em;font-weight:700;color:var(--red)} .brow .n{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .brow .d{font-size:.8em;opacity:.6} .brow .v{font-weight:700}
   .brow.new{background:#eef6ea;border-radius:.4em}
@@ -140,7 +141,7 @@
     <div class="card" id="v-board">
       <div class="row" style="justify-content:space-between"><span class="h script">Klassement</span>
         <label class="nm">Naam <input id="nameIn" maxlength="12" autocomplete="off" autocapitalize="words" spellcheck="false"></label></div>
-      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="boss">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button></div>
+      <div class="row tabs"><button class="tab on" data-tab="endless">Run Roy Run!</button><button class="tab" data-tab="rodina">Rodina</button><button class="tab" data-tab="pizza">Pizzatoren</button><button class="tab" data-tab="fles">Flesjes</button></div>
       <div class="row" style="justify-content:space-between;font-size:.72em;margin:.1em .2em"><i id="boardNote"></i><button id="scopeBtn" class="tab" style="flex:0 0 auto;font-size:1em;padding:.15em .8em"></button></div>
       <div id="boardWrap"><div id="boardList"></div><div id="boardMore">▼ veeg voor meer</div></div>
       <div class="row" style="gap:.5em"><button class="btn alt small" data-go="main">‹ Terug</button><button class="btn small" id="shareBtn">Deel mijn record</button></div>
@@ -523,6 +524,7 @@ function bank() {
   save.wallet += worstCount; persist(); refreshWallet();
 }
 function startLevel(i) { startRun('level', i); }
+function startReplay(rec) { goFullscreen(); startRun('boss'); startBoss(rec); }
 function startRun(m, i, seed) {
   mode = m; attempts = 0; held = false; particles = []; shake = 0; flash = 0; banner = 0;
   if (m === 'level') { buildLevel(i || 0); reset(); }
@@ -1346,6 +1348,7 @@ function drawSign(c, x, y) { // houten uithangbord in huisstijl
 
 function drawWall(camX, time) {
   if (theme.room === 'keuken') return drawKitchen(camX, time);
+  if (theme.room === 'straat') return drawStreet(camX, time);
   if (theme.room === 'kelder') return drawCellar(camX, time);
   const c = ctx, th = theme;
   c.fillStyle = th.wall; c.fillRect(-20, -20, W + 40, H + 40);
@@ -1885,18 +1888,30 @@ function drawHint(c, txt, alpha) {
   c.fillStyle = '#f7efdc'; c.textAlign = 'center'; c.fillText(txt, W / 2, H - 26); c.globalAlpha = 1;
 }
 
-// ================= Eindbaas: Rodina =================
+// ================= Eindbaas: Rodina, drie fases op drie plekken =================
+// Vaste rekenstap (1/120 s) en een eigen toevalsgenerator: met alleen de tikken kun je een gevecht precies naspelen (replays).
 let BS = null;
 const BOSS_PAT = [
   [[[0,'k'],[1.0,'k'],[2.0,'p']], [[0,'k'],[.9,'p'],[1.6,'k']], [[0,'w'],[1.4,'k']], [[0,'p'],[.5,'k'],[1.5,'k']], [[0,'v'],[1.3,'k'],[2.3,'p']], [[0,'t'],[.5,'k'],[1.5,'t']]],
   [[[0,'k'],[.18,'k'],[1.1,'p'],[1.5,'k']], [[0,'w'],[1.0,'p'],[1.4,'k'],[2.2,'k']], [[0,'p'],[.4,'k'],[1.25,'p'],[1.65,'k']], [[0,'k'],[.7,'k'],[1.4,'k'],[2.25,'p']], [[0,'v'],[.9,'p'],[1.3,'k'],[2.0,'k']], [[0,'t'],[.4,'k'],[1.25,'t'],[1.65,'w']]],
   [[[0,'k'],[.18,'k'],[1.0,'p'],[1.35,'k'],[2.05,'k'],[2.23,'k']], [[0,'p'],[.35,'k'],[1.2,'p'],[1.55,'w'],[2.75,'p']], [[0,'k'],[.65,'k'],[1.3,'k'],[1.95,'k'],[2.8,'p']], [[0,'v'],[.65,'k'],[1.45,'p'],[1.8,'k'],[2.45,'v']], [[0,'t'],[.35,'k'],[1.15,'t'],[1.5,'k'],[2.3,'t'],[2.65,'v']]],
 ];
-const BOSS_HP = 170;
-const bossPhase = () => BS.hp > BOSS_HP * .66 ? 0 : BS.hp > BOSS_HP * .33 ? 1 : 2;
-function startBoss() {
-  theme = THEMES[2]; worstCount = 0; banked = false; clearWorld(); P = null;
-  BS = {hp: BOSS_HP, t: 0, py: 0, pvy: 0, pground: true, lives: 3, inv: 0, cd: 0, proj: [], shots: [], cyc: 'rest', ct: 1.8, pat: null, pi: 0, pt: 0, cycles: 0, clouds: [], hurt: 0, wind: 0, dmg: 0, hint: 6, shown: false, lastPhase: 0, pu: null, puT: 5, fx: {espresso: 0, curry: 0, ijs: 0, mega: 0, doos: 0}, rain: [], puBan: 0};
+const STAGE_HP = [0, 100, 85, 110], STAGE_TITLE = ['', 'RODINA', 'RODINA OP DE VESPA', 'GIGA-RODINA'], STAGE_PLACE = ['', 'DE EETZAAL', 'OP STRAAT', 'DE WIJNKELDER'];
+const STREET = {room: 'straat', floorA: '#5a5a62', floorB: '#3e3e46', text: '#f7efdc', lamp: .5};
+const BSTEP = 1 / 120, BOSS_HP = 100, REPLAY_VER = 1;
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const bossPhase = () => !BS ? 0 : BS.stage === 1 ? (BS.hp > BS.hpMax * .5 ? 0 : 1) : 2;
+const bossTX = () => BS.stage === 2 && BS.v ? BS.v.x : BS.stage === 3 && BS.g ? BS.g.x : W * .8;   // waar Rodina nu staat
+function encodeRep(ev) { let s = '', last = 0; for (const [st, k] of ev) { s += (st - last).toString(36) + k; last = st; } return s; }
+function decodeRep(s) { const ev = []; let num = '', st = 0; for (const ch of s || '') { if (ch >= 'A' && ch <= 'Z') { st += parseInt(num || '0', 36); ev.push([st, ch]); num = ''; } else num += ch; } return ev; }
+function startBoss(rep) {
+  worstCount = 0; banked = false; clearWorld(); P = null; particles = [];
+  const seed = rep ? rep.s : (Math.random() * 1e9) | 0;
+  BS = {seed, rng: mulberry(seed), replay: rep ? {ev: decodeRep(rep.r), i: 0, name: rep.n || '?'} : null, rec: [], step: 0, acc: 0, qJump: false, qThrow: false, inHold: false, jb: 0,
+        stage: 1, hpMax: STAGE_HP[1], hp: STAGE_HP[1], trans: 0, transTo: 0, switched: false,
+        t: 0, py: 0, pvy: 0, pground: true, lives: 3, inv: 0, cd: 0, proj: [], shots: [], hz: [], cyc: 'rest', ct: 1.8, pat: null, pi: 0, pt: 0, cycles: 0, clouds: [],
+        hurt: 0, wind: 0, dmg: 0, hint: rep ? 0 : 6, shown: false, lastPhase: 0, pu: null, puT: 5, fx: {espresso: 0, curry: 0, ijs: 0, mega: 0}, rain: [], puBan: 0, v: null, g: null};
+  theme = THEMES[2]; themeFrom = null; themeT = 0;
   state = 'play'; deadTimer = 0;
 }
 // ---- power-ups bij Rodina: vallen willekeurig boven Roy, spring ertegenaan om ze te pakken
@@ -1906,26 +1921,13 @@ const BPU = {
   curry: {n: 'CURRY VAN ROY!', d: 'onkwetsbaar + dubbele schade', dur: 5},
   mega: {n: 'MEGA-WORST!', d: '3 keer extra hard', dur: 0},
   ijs: {n: 'IJSJE! RODINA BEVRIEST', d: 'bevroren', dur: 3.5},
-  doos: {n: 'PIZZADOOS-SCHILD!', d: 'blokt 1 klap', dur: 0},
   hart: {n: 'LASAGNE VAN MAMMA! +1 HART', d: '', dur: 0},
 };
 const PU_Y = -165;
 function bossPickType() {
-  const L = ['espresso', 'espresso', 'glizzy', 'glizzy', 'curry', 'mega', 'mega', 'ijs', 'doos', 'doos'];
+  const L = ['espresso', 'espresso', 'glizzy', 'glizzy', 'curry', 'mega', 'mega', 'ijs', 'ijs'];
   if (BS.lives < 3) L.push('hart', 'hart', 'hart');
-  return L[Math.floor(Math.random() * L.length)];
-}
-function bossDamage(d, x, y, big) {   // schade aan Rodina, met winst als ze op is
-  if (state !== 'play') return;
-  BS.hp -= d; BS.dmg += d; BS.hurt = .15; worstCount = Math.floor(BS.dmg / 8);
-  tone(180, 90, .1, 'sawtooth', .07); popText('-' + d, x + Math.random() * 30, y - Math.random() * 40, big ? '#ffe14f' : '#fff', big ? 26 : 18);
-  const bx = W * .8;
-  if (BS.hp <= 0) {
-    BS.hp = 0; state = 'win'; deadTimer = 0; BS.proj = []; BS.rain = []; shake = 18; flash = 1;
-    worstCount = Math.floor(BS.dmg / 8) + 40 + 10 * BS.lives; save.bossWins = (save.bossWins || 0) + 1; addScore('boss', Math.round(BS.t * 10) / 10, BS.lives); bank();
-    [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, f, .25, 'triangle', .09, i * .12));
-    for (let i = 0; i < 50; i++) particles.push({x: bx + (Math.random() - .5) * 80, y: groundY - 40 - Math.random() * 180, vx: (Math.random() - .5) * 500, vy: -Math.random() * 500, life: .8 + Math.random(), size: 5 + Math.random() * 6, col: ['#ffe14f', '#e0301e', '#2fae5a', '#fff'][i % 4]});
-  }
+  return L[Math.floor(BS.rng() * L.length)];
 }
 function bossPowerTick(dt) {
   const px = W * .2, bx = W * .8, F = BS.fx;
@@ -1936,7 +1938,7 @@ function bossPowerTick(dt) {
     const u = BS.pu; u.y += (PU_Y - u.y) * Math.min(1, dt * 3.2); u.life -= dt;
     const top = BS.py - 108;
     if (u.life > 0 && u.y > PU_Y - 30 && u.y + 22 > top && u.y - 22 < BS.py) {   // gepakt
-      const T2 = u.type; BS.pu = null; BS.puT = 7 + Math.random() * 4;
+      const T2 = u.type; BS.pu = null; BS.puT = 7 + BS.rng() * 4;
       bannerTxt = BPU[T2].n; BS.puBan = 1.6;
       [784, 1046, 1318].forEach((f, i) => tone(f, f, .12, 'triangle', .07, i * .06));
       burst(px, groundY + PU_Y, 18, ['#ffe14f', '#fff', '#9fe08a'], 320);
@@ -1944,12 +1946,11 @@ function bossPowerTick(dt) {
       else if (T2 === 'curry') { F.curry = BPU.curry.dur; flash = .6; }
       else if (T2 === 'ijs') { F.ijs = BPU.ijs.dur; tone(2000, 600, .5, 'sine', .06); }
       else if (T2 === 'mega') F.mega = 3;
-      else if (T2 === 'doos') F.doos = 1;
       else if (T2 === 'hart') BS.lives = Math.min(3, BS.lives + 1);
-      else if (T2 === 'glizzy') for (let i = 0; i < 12; i++) BS.rain.push({x: bx - 50 + Math.random() * 90, y: -groundY - 40 - i * 55, vy: 520 + Math.random() * 120, rot: Math.random() * 6});
-    } else if (u.life <= 0) { BS.pu = null; BS.puT = 5 + Math.random() * 3; }
+      else if (T2 === 'glizzy') for (let i = 0; i < 12; i++) BS.rain.push({x: bossTX() - 50 + BS.rng() * 90, y: -groundY - 40 - i * 55, vy: 520 + BS.rng() * 120, rot: 0});
+    } else if (u.life <= 0) { BS.pu = null; BS.puT = 5 + BS.rng() * 3; }
   }
-  for (const r of BS.rain) { r.y += r.vy * dt; r.rot += dt * 9; if (r.y > -150) { r.dead = true; bossDamage(2, bx - 40, groundY - 170, false); burst(r.x, groundY + r.y, 5, ['#a8431f', '#e8b878'], 200); if (state !== 'play') return; } }
+  for (const r of BS.rain) { r.y += r.vy * dt; r.rot += dt * 9; if (r.y > -150) { r.dead = true; if (bossVulnerable(true)) bossDamage(2, bossTX() - 40, groundY - 170, false); burst(r.x, groundY + r.y, 5, ['#a8431f', '#e8b878'], 200); if (state !== 'play') return; } }
   BS.rain = BS.rain.filter(r => !r.dead);
   BS.puBan = Math.max(0, (BS.puBan || 0) - dt);
 }
@@ -1971,55 +1972,144 @@ function drawPUIcon(c, t, x, y, time, s) {
   else if (t === 'glizzy') drawGlizzy(c, 0, 0, 0);
   else if (t === 'curry') drawCurry(c, 0, 0, 0);
   else if (t === 'mega') drawWorst(c, 0, 0, -.4, 46);
-  else if (t === 'doos') { drawPizzaBox(c, 0, 4, -.08, .5, 44, 12); drawPizzaBox(c, 0, -8, .06, .2, 44, 12); }
   else if (t === 'hart') { c.fillStyle = '#e0301e'; c.beginPath(); c.moveTo(0, 14); c.bezierCurveTo(-24, -2, -14, -20, 0, -8); c.bezierCurveTo(14, -20, 24, -2, 0, 14); c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke(); }
   else if (t === 'ijs') { c.fillStyle = '#d9a05a'; c.beginPath(); c.moveTo(-9, -2); c.lineTo(9, -2); c.lineTo(0, 20); c.closePath(); c.fill(); c.strokeStyle = '#a8743c'; c.lineWidth = 1; c.stroke();
     c.fillStyle = '#ffd0e0'; c.beginPath(); c.arc(-4, -6, 8, 0, 7); c.fill(); c.fillStyle = '#c8f0ff'; c.beginPath(); c.arc(5, -8, 8, 0, 7); c.fill(); c.fillStyle = '#fff6c8'; c.beginPath(); c.arc(0, -15, 7, 0, 7); c.fill(); }
   c.restore();
 }
 const fmtT = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+
 function bossThrow() {
-  if (!BS || state !== 'play' || BS.cd > 0) return;
+  if (!BS || state !== 'play' || BS.cd > 0 || BS.trans > 0) return;
   BS.cd = BS.fx.espresso > 0 ? .15 : .42; BS.thr = 1; const mega = BS.fx.mega > 0; if (mega) BS.fx.mega--;
   BS.shots.push({x: W * .2 + 22, y: BS.py - 32, vx: mega ? 560 : 640, rot: 0, mega, hot: BS.fx.curry > 0});
   tone(700, 380, .09, 'square', .05);
 }
 function bossHurtPlayer() {
-  if (BS.lives <= 1 && BS.inv <= 0) deathQuote = pickQuote('boss');
-  if (BS.inv > 0 || BS.fx.curry > 0) return;
-  if (BS.fx.doos) { BS.fx.doos = 0; BS.inv = 1; popText('Gered door de doos!', W * .2, groundY - 150, '#9fe08a', 18); burst(W * .2, groundY - 60, 14, ['#d9a868', '#b0222b', '#fff'], 300); tone(400, 200, .2, 'square', .06); return; }
+  if (BS.inv > 0 || BS.fx.curry > 0 || BS.trans > 0) return;
+  if (BS.lives <= 1) deathQuote = pickQuote('boss');
   BS.lives--; BS.inv = 1.3; shake = 12; flash = .8; tone(260, 70, .3, 'sawtooth', .11);
   if (BS.lives <= 0) {
     state = 'dead'; deadTimer = 0;
     particles.push({body: 1, x: W * .2, y: groundY + BS.py, vx: -110, vy: -400, r: 0, vr: -6, life: 1.6, floor: groundY - 8});
     particles.push({head: 1, x: W * .2, y: groundY + BS.py - 90, vx: -90, vy: -560, r: 0, vr: -8, life: 1.6});
-    worstCount = Math.floor(BS.dmg / 8); bank();
+    worstCount = Math.floor(BS.dmg / 8) + (BS.stage - 1) * 15; if (!BS.replay) bank();
   }
 }
+function bossVulnerable(any) {   // mag Rodina nu geraakt worden?
+  if (BS.trans > 0) return false;
+  if (BS.stage === 2) { const m = BS.v && BS.v.mode; return m === 'park' || m === 'rev' || m === 'dizzy'; }
+  return true;
+}
+function bossDamage(d, x, y, big) {
+  if (state !== 'play' || BS.trans > 0) return;
+  BS.hp -= d; BS.dmg += d; BS.hurt = .15;
+  tone(180, 90, .1, 'sawtooth', .07); popText('-' + d, x + Math.random() * 30, y - Math.random() * 40, big ? '#ffe14f' : '#fff', big ? 26 : 18);
+  if (BS.hp > 0) return;
+  BS.hp = 0;
+  if (BS.stage < 3) { BS.trans = 3; BS.transTo = BS.stage + 1; BS.switched = false; BS.proj = []; BS.hz = []; BS.shots = []; BS.rain = []; shake = 16; flash = .9; [392, 330, 262].forEach((f, i) => tone(f, f * .7, .35, 'sawtooth', .09, i * .14)); return; }
+  state = 'win'; deadTimer = 0; BS.proj = []; BS.hz = []; BS.rain = []; shake = 18; flash = 1;
+  worstCount = Math.floor(BS.dmg / 8) + 80 + 15 * BS.lives;
+  if (!BS.replay) {
+    save.bossWins = (save.bossWins || 0) + 1;
+    const v = Math.round(BS.t * 10) / 10;
+    if (!save.rodinaBest || v < save.rodinaBest.v) save.rodinaBest = {v, x: BS.lives, s: BS.seed, r: encodeRep(BS.rec), rv: REPLAY_VER};
+    addScore('rodina', v, BS.lives); bank();
+  }
+  [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, f, .25, 'triangle', .09, i * .12));
+  const gx = bossTX();
+  for (let i = 0; i < 60; i++) particles.push({x: gx + (Math.random() - .5) * 120, y: groundY - 60 - Math.random() * 220, vx: (Math.random() - .5) * 600, vy: -Math.random() * 600, life: .8 + Math.random(), size: 5 + Math.random() * 6, col: ['#ffe14f', '#e0301e', '#2fae5a', '#fff'][i % 4]});
+}
+function bossSetStage(n) {   // midden in de overgang: nieuwe plek en nieuwe aanvallen
+  BS.stage = n; BS.hpMax = STAGE_HP[n]; BS.hp = STAGE_HP[n]; BS.cyc = 'rest'; BS.ct = 1.6; BS.cycles = 0; BS.pi = 0; BS.clouds = []; BS.hint = BS.replay ? 0 : 5;
+  theme = n === 2 ? STREET : CELLAR; themeFrom = null; themeT = 0;
+  if (n === 2) BS.v = {x: W + 160, mode: 'enter', t: 0, vx: 0, h: 0, charges: 0, hop: false, wheelie: 0, lean: 0, throwT: 0, loops: 0};
+  if (n === 3) BS.g = {x: W * .79, y: -150, mode: 'rise', t: 0, rise: 1, mouth: 0, eye: 0, n: 0, q: [], shake: 0};
+}
+// ---------- vaste rekenstap
 function updateBoss(dt) {
   if (state === 'dead' || state === 'win') {
     deadTimer += dt;
-    if (deadTimer > 1.7 && !BS.shown) {
+    if (deadTimer > 1.9 && !BS.shown) {
       BS.shown = true;
-      if (state === 'win') showResult('Rodina verslagen!', `In ${fmtT(BS.t)}${save.bossBest && save.bossBest.v >= Math.round(BS.t * 10) / 10 ? ' · nieuw record!' : save.bossBest ? ' · record ' + fmtT(save.bossBest.v) : ''}<br>Met nog ${BS.lives} ${BS.lives === 1 ? 'hartje' : 'hartjes'} over<br>🌭 +${worstCount} worstjes`);
-      else showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>Rodina had nog ${Math.max(1, Math.ceil(BS.hp / BOSS_HP * 100))}% over · ${fmtT(BS.t)} volgehouden<br>🌭 +${worstCount} worstjes`);
+      if (BS.replay) showResult(state === 'win' ? 'Replay: Rodina verslagen' : 'Replay afgelopen', `Replay van <b>${BS.replay.name}</b><br>${state === 'win' ? 'Alle drie de fases in ' + fmtT(BS.t) : 'Tot fase ' + BS.stage + ' gekomen'}`);
+      else if (state === 'win') showResult('Rodina verslagen!', `Alle drie de fases in ${fmtT(BS.t)}${save.rodinaBest && save.rodinaBest.v >= Math.round(BS.t * 10) / 10 && save.rodinaBest.s === BS.seed ? ' · nieuw record!' : save.rodinaBest ? ' · record ' + fmtT(save.rodinaBest.v) : ''}<br>Met nog ${BS.lives} ${BS.lives === 1 ? 'hartje' : 'hartjes'} over<br>🌭 +${worstCount} worstjes`);
+      else showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>Fase ${BS.stage}/3 · ${STAGE_TITLE[BS.stage].toLowerCase()} had nog ${Math.max(1, Math.ceil(BS.hp / BS.hpMax * 100))}% over<br>${fmtT(BS.t)} volgehouden · 🌭 +${worstCount} worstjes`);
     }
     return;
   }
   if (state !== 'play') return;
-  const px = W * .2, bx = W * .8, ph = bossPhase(), spd = [400, 460, 520][ph];
+  BS.acc += dt; let n = 0;
+  while (BS.acc >= BSTEP && n < 10 && state === 'play') { BS.acc -= BSTEP; bossStep(BSTEP); n++; }
+}
+function bossStep(dt) {
+  BS.step++;
+  // invoer: live opnemen, of uit de replay halen
+  let tap = false, thr = false;
+  if (BS.replay) { const R = BS.replay; while (R.i < R.ev.length && R.ev[R.i][0] <= BS.step) { const k = R.ev[R.i][1]; if (k === 'J') tap = true; else if (k === 'T') thr = true; else if (k === 'H') BS.inHold = true; else if (k === 'U') BS.inHold = false; R.i++; } }
+  else { tap = BS.qJump; thr = BS.qThrow; BS.qJump = BS.qThrow = false; const h = held;
+    if (tap) BS.rec.push([BS.step, 'J']); if (thr) BS.rec.push([BS.step, 'T']); if (h !== BS.inHold) { BS.inHold = h; BS.rec.push([BS.step, h ? 'H' : 'U']); } }
+  if (tap) BS.jb = .26;   // springbuffer: ook een tik net vóór de landing telt
+  if (thr) bossThrow();
+  const px = W * .2;
   BS.t += dt; BS.rel = Math.max(0, (BS.rel || 0) - dt * 3.5); BS.splat = (BS.splat || 0) - dt; BS.cd -= dt; BS.inv -= dt; BS.hurt -= dt; BS.hint -= dt; BS.wind -= dt;
-  if (ph !== BS.lastPhase) { BS.lastPhase = ph; banner = 1.6; shake = 10; tone(120, 60, .5, 'sawtooth', .1); }
   // speler
-  jumpBuf -= dt;
-  if ((held || jumpBuf > 0) && BS.pground) { BS.pvy = JUMP; BS.pground = false; jumpBuf = 0; tone(520, 880, .08, 'square', .04); }
+  BS.jb -= dt;
+  if ((BS.inHold || BS.jb > 0) && BS.pground) { BS.pvy = JUMP; BS.pground = false; BS.jb = 0; tone(520, 880, .08, 'square', .04); }
   BS.pvy += GRAV * dt; BS.py += BS.pvy * dt;
   if (BS.py >= 0) { BS.py = 0; BS.pvy = 0; BS.pground = true; }
   if (BS.wasAir && BS.pground) BS.land = 1; BS.wasAir = !BS.pground; BS.land = Math.max(0, (BS.land || 0) - dt * 5.5); BS.thr = Math.max(0, (BS.thr || 0) - dt * 4.5);
   BS.airB = (BS.airB || 0) + ((BS.pground ? 0 : 1) - (BS.airB || 0)) * Math.min(1, dt * 22);
-  // aanvalscyclus
+  // overgang tussen fases
+  if (BS.trans > 0) {
+    BS.trans -= dt;
+    if (!BS.switched && BS.trans < 1.6) { BS.switched = true; bossSetStage(BS.transTo); }
+    for (const s of BS.shots) s.x += s.vx * dt;
+    return;
+  }
   bossPowerTick(dt); if (state !== 'play') return;
-  const fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;   // bevroren: Rodina staat stil
+  if (BS.stage === 1) bossStage1(dt); else if (BS.stage === 2) bossStage2(dt); else bossStage3(dt);
+  if (state !== 'play') return;
+  // gevaren van fase 2 en 3 (rechthoeken)
+  const ry1 = BS.py - 92, ry2 = BS.py - 2;
+  for (const z of BS.hz) {
+    z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt;
+    if (z.vy !== undefined) { z.vy += (z.g || 0) * dt; z.y += z.vy * dt; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } }
+    if (z.rot !== undefined) z.rot += (z.vr || 0) * dt;
+    if (z.life !== undefined) { z.life -= dt; if (z.life <= 0) { z.dead = true; continue; } }
+    if (!z.harm) { if (z.x < -200 || z.x > W + 260) z.dead = true; continue; }
+    const hit = z.x - z.w / 2 < px + 13 && z.x + z.w / 2 > px - 13 && z.y - z.h < ry2 && z.y > ry1;
+    if (hit && BS.inv <= 0 && BS.fx.curry <= 0) { if (z.kill) z.dead = true; bossHurtPlayer(); if (state !== 'play') return; }
+    if (z.x < -200 || z.x > W + 260) z.dead = true;
+  }
+  BS.hz = BS.hz.filter(z => !z.dead);
+  // worstjes van de speler
+  const tx = bossTX();
+  for (const s of BS.shots) {
+    s.x += s.vx * dt; s.rot += dt * 14;
+    if (s.x > W + 40) { s.dead = true; continue; }
+    const reach = BS.stage === 1 ? tx - 52 : BS.stage === 2 ? tx - 70 : tx - 100;
+    if (s.x < reach) continue;
+    if (!bossVulnerable()) continue;   // vliegt er dan langs
+    s.dead = true;
+    if (BS.stage === 1 && BS.cyc === 'shield' && !(BS.fx.ijs > 0)) {
+      BS.proj.push({type: 'r', x: tx - 70, y: -28, vx: -460 * 1.05, delay: 0, rot: 0});
+      tone(1200, 900, .12, 'square', .06); popText('KETS!', tx - 80, groundY - 150, '#cfd6e2', 20); continue;
+    }
+    let weak = BS.stage === 1 ? BS.cyc === 'stun' : BS.stage === 2 ? BS.v.mode === 'dizzy' : BS.g.mouth > .6;
+    let d = weak ? (BS.stage === 3 ? 6 : 5) : 2; if (s.mega) d *= 3; if (s.hot) d *= 2;
+    for (let i = 0; i < (s.mega ? 12 : 5); i++) particles.push({x: tx - 50, y: groundY + s.y, vx: -100 - Math.random() * 200, vy: -200 * Math.random(), life: .4, size: 4, col: s.hot ? '#ffb02a' : '#e0763a'});
+    if (s.mega) shake = 6;
+    bossDamage(d, tx - 40, groundY - 170, weak || d > 2);
+    if (state !== 'play') return;
+  }
+  BS.shots = BS.shots.filter(s => !s.dead);
+}
+// ---------- fase 1: de eetzaal (zoals je haar kent)
+function bossStage1(dt) {
+  const px = W * .2, bx = W * .8, ph = bossPhase(), spd = [400, 470][ph];
+  if (ph !== BS.lastPhase) { BS.lastPhase = ph; banner = 1.6; shake = 10; tone(120, 60, .5, 'sawtooth', .1); }
+  const fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
   if (BS.cyc === 'attack') {
     BS.pt += dtR;
     while (BS.pi < BS.pat.length && BS.pt >= BS.pat[BS.pi][0]) {
@@ -2034,44 +2124,96 @@ function updateBoss(dt) {
   } else {
     BS.ct -= dtR;
     if (BS.ct <= 0) {
-      if (BS.cyc === 'rest') { const L = BOSS_PAT[ph]; BS.pat = L[Math.floor(Math.random() * L.length)]; BS.pi = 0; BS.pt = 0; BS.cyc = 'attack'; }
-      else { BS.cyc = 'rest'; BS.ct = [1.2, .9, .6][ph]; }
+      if (BS.cyc === 'rest') { const L = BOSS_PAT[ph]; BS.pat = L[Math.floor(BS.rng() * L.length)]; BS.pi = 0; BS.pt = 0; BS.cyc = 'attack'; }
+      else { BS.cyc = 'rest'; BS.ct = [1.1, .8][ph]; }
     }
   }
-  // projectielen van Rodina
   for (const p of BS.proj) {
     if (p.delay > 0) { p.delay -= dt; if (p.delay <= 0) BS.rel = 1; continue; }
     p.x += p.vx * dt * (fz ? .25 : 1); p.rot += dt * (p.type === 'w' ? -8 : p.type === 'p' ? 10 : p.type === 't' ? -5 : p.type === 'v' ? -11 : 0);
     if (p.type === 'v') { p.puff = (p.puff || 0) - dt; if (p.puff <= 0) { p.puff = .035; BS.clouds.push({x: p.x + 10, y: p.y - 10 - Math.random() * 30, r: 16 + Math.random() * 16, vy: -25 - Math.random() * 30, life: 1.7, max: 1.7}); } }
     const dx = Math.abs(p.x - px);
     const hit = p.type === 'k' ? dx < 30 && BS.py > -30 : p.type === 'p' || p.type === 't' ? dx < 32 && BS.py < -36 : p.type === 'w' ? dx < 36 && BS.py > -44 : dx < 27 && BS.py > -36;
-    if (hit && BS.inv <= 0) { p.dead = true; if (p.type === 't') { BS.splat = 1.8; burst(px, groundY + p.y, 14, ['#5a3219', '#f3e3c3', '#8a5a34'], 320); } bossHurtPlayer(); if (state !== 'play') return; }
+    if (hit && BS.inv <= 0 && BS.fx.curry <= 0) { p.dead = true; if (p.type === 't') { BS.splat = 1.8; burst(px, groundY + p.y, 14, ['#5a3219', '#f3e3c3', '#8a5a34'], 320); } bossHurtPlayer(); if (state !== 'play') return; }
     if (p.x < -60) p.dead = true;
   }
   BS.proj = BS.proj.filter(p => !p.dead);
   for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 14 * dt; }
   BS.clouds = BS.clouds.filter(q => q.life > 0);
-  // worstjes van de speler
-  for (const s of BS.shots) {
-    s.x += s.vx * dt; s.rot += dt * 14;
-    if (s.x > bx - 52) {
-      s.dead = true;
-      if (BS.cyc === 'shield' && !fz) {
-        BS.proj.push({type: 'r', x: bx - 70, y: -28, vx: -spd * 1.05, delay: 0, rot: 0});
-        tone(1200, 900, .12, 'square', .06); popText('KETS!', bx - 80, groundY - 150, '#cfd6e2', 20);
-      } else {
-        let d = BS.cyc === 'stun' ? 5 : 2; if (s.mega) d = BS.cyc === 'stun' ? 10 : 6; if (s.hot) d *= 2;
-        for (let i = 0; i < (s.mega ? 12 : 5); i++) particles.push({x: bx - 50, y: groundY + s.y, vx: -100 - Math.random() * 200, vy: -200 * Math.random(), life: .4, size: 4, col: s.hot ? '#ffb02a' : '#e0763a'});
-        if (s.mega) shake = 6;
-        bossDamage(d, bx - 40, groundY - 170, d > 2);
-        if (state !== 'play') {
-          return;
-        }
-      }
-    }
-  }
-  BS.shots = BS.shots.filter(s => !s.dead);
 }
+// ---------- fase 2: op straat met de Vespa (stormt op je af zoals Bowser, of springt over je heen)
+function bossStage2(dt) {
+  const V = BS.v, px = W * .2, park = W * .8, lowHp = BS.hp < BS.hpMax * .45, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
+  V.t += dtR; V.throwT = Math.max(0, V.throwT - dt); V.wheelie += ((V.mode === 'rev' && V.hop ? 1 : 0) - V.wheelie) * Math.min(1, dt * 8);
+  for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 18 * dt; } BS.clouds = BS.clouds.filter(q => q.life > 0);
+  if (V.mode === 'enter') { V.x += (park - V.x) * Math.min(1, dt * 3.2); if (Math.abs(V.x - park) < 4) { V.x = park; V.mode = (V.loops % 3 === 2) ? 'dizzy' : 'park'; V.t = 0; V.shots = 0; if (V.mode === 'dizzy') { tone(500, 200, .5, 'triangle', .07); popText('DUIZELIG!', park, groundY - 230, '#ffe14f', 22); } } }
+  else if (V.mode === 'park') {   // staat stil: gooit vapebommen en helmen, kwetsbaar
+    const every = lowHp ? .72 : .95, dur = lowHp ? 2.8 : 3.3;
+    if (V.t > .6 + V.shots * every && V.t < dur - .4) {
+      V.shots++; V.throwT = .35; BS.wind = .35;
+      if (BS.rng() < .55) {   // vapebom: boog, landt vóór Roy, schokgolf rolt naar hem toe
+        const lx = px + 150 + BS.rng() * 120, T = .95, vx = (lx - (V.x - 30)) / T, vy0 = -(260 + 0.5 * 1500 * T * T) / T;
+        BS.hz.push({type: 'bomb', x: V.x - 30, y: -260, vx, vy: vy0 + 0, g: 1500, land: 0, w: 22, h: 22, rot: 0, vr: -9, harm: false,
+          onLand: z => { tone(90, 40, .3, 'sawtooth', .12); shake = 6; for (const dir of [-1, 1]) { BS.hz.push({type: 'wave', x: z.x, y: 0, vx: dir * (lowHp ? 520 : 460), w: 34, h: 40, harm: true, life: 2.2}); BS.hz.push({type: 'wave', x: z.x + dir * 300, y: 0, vx: dir * (lowHp ? 520 : 460), w: 34, h: 40, harm: true, life: 2.2, d2: 1}); } for (let i = 0; i < 8; i++) BS.clouds.push({x: z.x + (Math.random() - .5) * 50, y: -10 - Math.random() * 30, r: 14 + Math.random() * 12, vy: -30, life: 1.1, max: 1.1}); }});
+      } else BS.hz.push({type: 'helm', x: V.x - 40, y: -12, vx: -(lowHp ? 600 : 520), w: 34, h: 30, rot: 0, vr: -10, harm: true, kill: true});
+    }
+    if (V.t > dur) { V.mode = 'rev'; V.t = 0; V.hop = BS.rng() < (lowHp ? .5 : .38); tone(110, 220, .9, 'sawtooth', .07); }
+  }
+  else if (V.mode === 'rev') {   // gas geven: waarschuwing
+    if (Math.random() < dt * 30) BS.clouds.push({x: V.x + 70, y: -24, r: 8 + Math.random() * 8, vy: -20, life: .6, max: .6});
+    if (V.t > (lowHp ? .6 : .8)) { V.mode = 'charge'; V.t = 0; V.charges++; V.vx = -(lowHp ? 920 : 820); tone(160, 90, .6, 'sawtooth', .1); }
+  }
+  else if (V.mode === 'charge') {
+    V.x += V.vx * dtR;
+    if (V.hop) { const d = (V.x - px) / 190; V.h = Math.abs(d) < 1 ? 175 * (1 - d * d) : 0; } else V.h = 0;
+    // de Vespa zelf is gevaarlijk (rechthoek rond de scooter)
+    const vy = -V.h, hit = V.x - 58 < px + 13 && V.x + 58 > px - 13 && vy - 56 < BS.py - 2 && vy > BS.py - 92;
+    if (hit && BS.inv <= 0 && BS.fx.curry <= 0) { bossHurtPlayer(); if (state !== 'play') return; }
+    if (V.x < -170) { V.x = W + 170; V.h = 0; const again = (lowHp || V.loops % 2 === 1) && V.charges % 2 === 1; if (again) { V.mode = 'rev'; V.t = .2; V.hop = BS.rng() < .5; } else { V.mode = 'enter'; V.loops++; V.charges = 0; } }
+  }
+  else if (V.mode === 'dizzy') { if (V.t > 2.6) { V.mode = 'park'; V.t = 0; V.shots = 0; } }
+  BS.cyc = V.mode === 'dizzy' ? 'stun' : 'rest';
+}
+// ---------- fase 3: Giga-Rodina in de wijnkelder (eindvorm zoals in Cuphead)
+const G_ATT = [['lowbolt', 'rings'], ['highbolt', 'barrels'], ['combo', 'rings'], ['combo', 'barrels'], ['rings', 'highbolt']];
+function bossStage3(dt) {
+  const G = BS.g, px = W * .2, rage = BS.hp < BS.hpMax * .35, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
+  G.t += dtR; G.rise = Math.max(0, G.rise - dt * .9); G.shake = Math.max(0, G.shake - dt);
+  G.mouth += ((G.mode === 'open' ? 1 : 0) - G.mouth) * Math.min(1, dt * 6);
+  G.eye += ((G.mode === 'tell' ? 1 : 0) - G.eye) * Math.min(1, dt * 7);
+  for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 16 * dt; } BS.clouds = BS.clouds.filter(q => q.life > 0);
+  const mouthX = G.x - 30, eyeY = G.y - 30;
+  if (G.mode === 'rise') { if (G.t > 1.4) { G.mode = 'idle'; G.t = 0; } return; }
+  if (G.mode === 'idle') { if (G.t > (rage ? .35 : .65)) { if (!G.q.length) G.q = G_ATT[Math.floor(BS.rng() * G_ATT.length)].slice(); G.cur = G.q.shift(); G.mode = 'tell'; G.t = 0; G.k = 0; } return; }
+  if (G.mode === 'tell') {   // ogen gloeien op: wat komt er?
+    if (G.t > (rage ? .6 : .8)) { G.mode = 'fire'; G.t = 0; G.k = 0; }
+    return;
+  }
+  if (G.mode === 'fire') {
+    const c2 = G.cur, sp = rage ? 1.15 : 1;
+    if (c2 === 'combo') {   // laag, dan meteen hoog: spring over de eerste en wees weer beneden voor de tweede
+      if (G.k === 0) { G.k = 1; BS.hz.push({type: 'bolt', hi: false, x: G.x - 80, y: -6, vx: -1020 * sp, w: 200, h: 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
+      if (G.k === 1 && G.t > (rage ? .55 : .62)) { G.k = 2; BS.hz.push({type: 'bolt', hi: true, x: G.x - 80, y: -108, vx: -1020 * sp, w: 200, h: 38, harm: true}); tone(1800, 400, .35, 'sawtooth', .07); G.shake = .2; }
+      if (G.t > 1.2) { G.mode = 'idle'; G.t = 0; G.n++; }
+    } else if (c2 === 'lowbolt' || c2 === 'highbolt') {   // lange straal over de vloer of op hoofdhoogte
+      const cnt = rage ? 2 : 1;
+      if (G.k < cnt && G.t > G.k * .75) { G.k++; const hi = c2 === 'highbolt'; BS.hz.push({type: 'bolt', hi, x: G.x - 80, y: hi ? -108 : -6, vx: -1020 * sp, w: 220, h: hi ? 38 : 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
+      if (G.t > cnt * .75 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
+    } else if (c2 === 'rings') {   // vape-ringen rollen over de vloer
+      const cnt = rage ? 4 : 3;
+      if (G.k < cnt && G.t > G.k * .62) { G.k++; BS.hz.push({type: 'ring', x: mouthX, y: 0, vx: -(500 + BS.rng() * 90) * sp, w: 38, h: 42, rot: 0, vr: -6, harm: true}); for (let i = 0; i < 4; i++) BS.clouds.push({x: mouthX, y: -60 - Math.random() * 40, r: 14 + Math.random() * 10, vy: -30, life: 1, max: 1}); tone(300, 200, .2, 'triangle', .06); }
+      if (G.t > cnt * .62 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
+    } else if (c2 === 'barrels') {   // wijnvaten rollen uit het donker
+      const cnt = rage ? 3 : 2;
+      if (G.k < cnt && G.t > G.k * .9) { G.k++; BS.hz.push({type: 'barrel', x: W + 40, y: 0, vx: -440 * sp, w: 44, h: 48, rot: 0, vr: -8, harm: true}); tone(120, 80, .3, 'sine', .1); }
+      if (G.t > cnt * .9 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
+    }
+    if (G.mode === 'idle' && G.n % 2 === 0) { G.mode = 'open'; G.t = 0; tone(200, 120, .8, 'sawtooth', .06); }   // na twee aanvallen: mond open
+    return;
+  }
+  if (G.mode === 'open') { if (G.t > (rage ? 1.8 : 2.2)) { G.mode = 'idle'; G.t = 0; } }
+}
+// ---------- tekenen
 function drawRodina(c, x, time) {
   const ph = bossPhase(), stun = BS.cyc === 'stun', dead = state === 'win';
   const jx = BS.hurt > 0 ? (Math.random() - .5) * 8 : ph === 2 && !dead ? (Math.random() - .5) * 1.6 : 0, bob = Math.sin(time / 260) * 3;
@@ -2079,7 +2221,7 @@ function drawRodina(c, x, time) {
   const wk = BS.wind > 0 ? 1 - BS.wind / .35 : -1, rel = BS.rel || 0, es = k => k * k * (3 - 2 * k);
   const lean = dead ? .5 : stun ? Math.sin(time / 200) * .08 : BS.hurt > 0 ? .12 : wk >= 0 ? .16 * es(Math.min(1, wk / .7)) - .34 * es(Math.max(0, (wk - .7) / .3)) : -.18 * rel + Math.sin(time / 700) * .015;
   const sq = wk >= 0 ? .06 * es(Math.min(1, wk / .7)) : -.05 * rel;
-  c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(x, 0, 57, 9.5, 0, 0, Math.PI * 2); c.fill();
+  if (BS.stage === 1) { c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(x, 0, 57, 9.5, 0, 0, Math.PI * 2); c.fill(); }
   c.save(); c.translate(x + jx, dead ? Math.min(60, deadTimer * 60) : 0); c.scale(2.25 * (1 + sq), 2.25 * (1 - sq)); c.rotate(lean);
   // lichaam zoals op de tekening: zwart hemdje, ketting, blote armen
   const hit = BS.hurt > 0, SK = hit ? '#ffe9e2' : '#f2b3a2', SKD = hit ? '#f5d5cc' : '#dc9c8c', TOP = hit ? '#7a7d84' : '#23262c', JN = hit ? '#8088a8' : '#2f3a5c';
@@ -2134,6 +2276,7 @@ function drawRodina(c, x, time) {
   if (stun) { c.fillStyle = '#ffe14f'; for (let i = 0; i < 4; i++) { const a = time / 180 + i * 1.57; hudText(c, '★', Math.cos(a) * 26, hy - 50 + Math.sin(a) * 7, 11, 'center', '#ffe14f'); } }
   c.restore();
 }
+
 function drawBossProj(c, p, time) {
   c.save(); c.translate(p.x, p.y);
   if (p.delay > 0) c.scale(.6 + Math.sin(time / 30) * .1, .6 + Math.sin(time / 30) * .1);
@@ -2164,65 +2307,149 @@ function drawBossProj(c, p, time) {
   } else { c.restore(); drawWorst(c, p.x, p.y, time / 40, 24); return; }
   c.restore();
 }
+
+function drawVespa(c, x, y, wheelie, time, moving) {
+  c.save(); c.translate(x, y); c.rotate(-wheelie * .28);
+  const wr = 14, spin = moving ? time / 30 : 0;
+  for (const wx of [-40, 38]) { c.fillStyle = '#1a1a1a'; c.beginPath(); c.arc(wx, -wr, wr, 0, 7); c.fill(); c.fillStyle = '#b8c0cc'; c.beginPath(); c.arc(wx, -wr, 6, 0, 7); c.fill();
+    c.strokeStyle = '#555'; c.lineWidth = 1.5; for (let i = 0; i < 3; i++) { const a = spin + i * 2.1; c.beginPath(); c.moveTo(wx, -wr); c.lineTo(wx + Math.cos(a) * 6, -wr + Math.sin(a) * 6); c.stroke(); } }
+  c.fillStyle = '#8fd8c0'; c.strokeStyle = '#3a7a68'; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(-52, -26); c.quadraticCurveTo(-56, -44, -40, -48); c.lineTo(-30, -48); c.lineTo(-24, -26); c.closePath(); c.fill(); c.stroke();   // voorscherm
+  c.beginPath(); c.moveTo(-28, -22); c.lineTo(18, -22); c.quadraticCurveTo(54, -24, 56, -40); c.quadraticCurveTo(40, -56, 10, -46); c.lineTo(-20, -40); c.closePath(); c.fill(); c.stroke();   // achterkant
+  c.fillStyle = '#3a2a22'; rr(c, 4, -54, 38, 9, 4); c.fill();   // zadel
+  c.strokeStyle = '#555'; c.lineWidth = 3; c.beginPath(); c.moveTo(-38, -48); c.lineTo(-44, -72); c.stroke(); c.lineWidth = 4; c.beginPath(); c.moveTo(-50, -72); c.lineTo(-36, -74); c.stroke();
+  c.fillStyle = '#ffe9a0'; c.beginPath(); c.arc(-48, -40, 5, 0, 7); c.fill(); if (moving) { c.fillStyle = 'rgba(255,240,160,.18)'; c.beginPath(); c.moveTo(-50, -44); c.lineTo(-220, -70); c.lineTo(-220, -6); c.lineTo(-50, -36); c.fill(); }
+  c.fillStyle = '#b0222b'; c.font = 'italic bold 8px Georgia,serif'; c.textAlign = 'center'; c.fillText('Bella', 28, -30);
+  c.fillStyle = '#777'; c.fillRect(46, -18, 16, 5);   // uitlaat
+  c.restore();
+}
+function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
+  const G = BS.g, dead = state === 'win', rise = G.rise * G.rise * 260, jx = (G.shake > 0 || BS.hurt > 0 ? (Math.random() - .5) * 10 : 0), bob = Math.sin(time / 380) * 8;
+  const cx = G.x + jx, cy = G.y + rise + bob + (dead ? Math.min(300, deadTimer * 160) : 0), hh = 300, hw = hh * ROD_ASPECT;
+  // schaduwlijf
+  c.fillStyle = '#0c0a0e'; c.beginPath(); c.ellipse(cx + 10, cy + 150, 170, 110, 0, Math.PI, 0); c.fill();
+  c.fillStyle = '#16141a'; c.beginPath(); c.ellipse(cx + 10, cy + 170, 140, 80, 0, Math.PI, 0); c.fill();
+  // gloed
+  const ga = .25 + G.eye * .5; const gl = c.createRadialGradient(cx, cy, 40, cx, cy, 260); gl.addColorStop(0, `rgba(${G.mouth > .5 ? '255,220,90' : '200,40,30'},${ga})`); gl.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = gl; c.fillRect(cx - 260, cy - 260, 520, 520);
+  const ok = im => im && im.complete && im.naturalWidth ? im : null;
+  const img = dead ? ok(rodinaX) || ok(rodina) : G.mouth > .5 ? ok(typeof rodRage !== 'undefined' && rodRage) || ok(rodinaA) || ok(rodina) : G.mode === 'tell' || G.mode === 'fire' ? ok(rodinaA) || ok(rodina) : (BS.hurt > 0 && ok(typeof rodHurtA !== 'undefined' && rodHurtA)) || ok(rodina);
+  c.save(); c.translate(cx, cy); c.rotate(Math.sin(time / 900) * .05 - (G.mode === 'fire' ? .06 : 0));
+  if (img && img.complete && img.naturalWidth) c.drawImage(img, -hw / 2, -hh / 2, hw, hh);
+  if (G.eye > .05) { c.fillStyle = `rgba(255,40,20,${G.eye * .55})`; c.globalCompositeOperation = 'lighter'; c.beginPath(); c.ellipse(-hw * .12, -hh * .05, 26, 16, 0, 0, 7); c.ellipse(hw * .16, -hh * .05, 26, 16, 0, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over'; }
+  c.restore();
+  if (G.mouth > .5 && !dead) {   // zwak punt
+    const pr = 30 + Math.sin(time / 90) * 5; c.strokeStyle = 'rgba(255,225,79,.9)'; c.lineWidth = 4; c.beginPath(); c.arc(cx - 30, cy + 60, pr, 0, 7); c.stroke();
+    hudText(c, 'NU! ×3', cx - 30, cy + 118, 22, 'center', '#ffe14f');
+  }
+  if (G.mode === 'tell' && G.cur) { const hi = G.cur === 'highbolt' || (G.cur === 'combo' && Math.floor(time / 250) % 2); c.setLineDash([10, 10]); c.strokeStyle = 'rgba(255,60,40,.5)'; c.lineWidth = 3; if (G.cur.endsWith('bolt')) { c.beginPath(); c.moveTo(0, hi ? -90 : -14); c.lineTo(G.x - 80, hi ? -90 : -14); c.stroke(); } c.setLineDash([]); }
+}
+function drawStreet(camX, time) {   // nachtelijke Sardijnse straat met huizen, lampjes en de maan
+  const c = ctx, off = camX * .3;
+  const sky = c.createLinearGradient(0, 0, 0, groundY); sky.addColorStop(0, '#0d1030'); sky.addColorStop(.6, '#2a1e4a'); sky.addColorStop(1, '#4a2a4a'); c.fillStyle = sky; c.fillRect(-20, -20, W + 40, groundY + 20);
+  for (let i = 0; i < 40; i++) { c.fillStyle = `rgba(255,255,255,${.3 + rnd(i) * .6})`; c.fillRect(rnd(i + 7) * W, rnd(i + 70) * groundY * .45, 1.5, 1.5); }
+  c.fillStyle = '#fff6d8'; c.beginPath(); c.arc(W * .78, groundY * .2, 26, 0, 7); c.fill(); c.fillStyle = '#2a1e4a'; c.beginPath(); c.arc(W * .78 + 10, groundY * .2 - 6, 22, 0, 7); c.fill();
+  const cols = ['#c86a4a', '#d8a85a', '#7aa0b8', '#c88aa0', '#a8b870', '#d88a5a'];
+  let x = -40;
+  for (let i = 0; x < W + 40; i++) {
+    const w = 120 + rnd(i * 3) * 70, h = groundY * (.45 + rnd(i * 5) * .3), y = groundY - h - 30;
+    c.fillStyle = cols[i % cols.length]; c.fillRect(x, y, w, h + 30); c.fillStyle = 'rgba(10,8,30,.55)'; c.fillRect(x, y, w, h + 30);
+    c.fillStyle = '#5a3a2a'; c.fillRect(x - 4, y - 8, w + 8, 10);
+    for (let r2 = 0; r2 < 3; r2++) for (let k = 0; k < Math.floor(w / 40); k++) { const lit = rnd(i * 31 + r2 * 7 + k) < .45, wx = x + 14 + k * 40, wy = y + 16 + r2 * 46; if (wy > groundY - 70) continue;
+      c.fillStyle = lit ? '#ffd27a' : '#1a1a2a'; c.fillRect(wx, wy, 18, 26); c.fillStyle = '#3a5a3a'; c.fillRect(wx - 7, wy, 6, 26); c.fillRect(wx + 19, wy, 6, 26); }
+    x += w + 6;
+  }
+  // lichtjes over de straat
+  for (let s = 0; s < 2; s++) { const y0 = groundY * (.18 + s * .12); c.strokeStyle = '#222'; c.lineWidth = 1; c.beginPath(); for (let k = 0; k <= 20; k++) { const xx = k / 20 * W, yy = y0 + Math.sin(k / 20 * Math.PI) * 30; k ? c.lineTo(xx, yy) : c.moveTo(xx, yy); } c.stroke();
+    for (let k = 1; k < 20; k++) { const xx = k / 20 * W, yy = y0 + Math.sin(k / 20 * Math.PI) * 30 + 4; c.fillStyle = ['#ffd23f', '#ff6a4a', '#7aff8a'][(k + s) % 3]; c.globalAlpha = .6 + .4 * Math.sin(time / 300 + k); c.beginPath(); c.arc(xx, yy, 3, 0, 7); c.fill(); c.globalAlpha = 1; } }
+  // straatlantaarns
+  for (const lx of [W * .08, W * .52, W * .95]) { c.fillStyle = '#1a1a22'; c.fillRect(lx - 3, groundY - 170, 6, 170); c.fillRect(lx - 14, groundY - 172, 28, 6);
+    const lg = c.createRadialGradient(lx, groundY - 160, 4, lx, groundY - 160, 110); lg.addColorStop(0, 'rgba(255,220,140,.5)'); lg.addColorStop(1, 'rgba(255,220,140,0)'); c.fillStyle = lg; c.fillRect(lx - 110, groundY - 270, 220, 220);
+    c.fillStyle = '#ffe9a0'; c.beginPath(); c.arc(lx, groundY - 162, 7, 0, 7); c.fill(); }
+}
 function drawBoss(time) {
-  const c = ctx, px = W * .2, bx = W * .8;
+  const c = ctx, px = W * .2, tx = bossTX();
   if (shake > .5) c.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   drawWall(200, time);
   c.save(); c.translate(0, groundY); drawFloor(0);
-  drawRodina(c, bx, time);
-  if (BS.fx.ijs > 0) {   // ijsblok om Rodina
-    const a = Math.min(1, BS.fx.ijs * 2) * .55; c.fillStyle = `rgba(170,225,255,${a})`; rr(c, bx - 72, -270, 144, 270, 16); c.fill(); c.strokeStyle = `rgba(255,255,255,${a + .2})`; c.lineWidth = 3; c.stroke();
-    c.strokeStyle = `rgba(255,255,255,${a})`; c.lineWidth = 2; c.beginPath(); c.moveTo(bx - 50, -240); c.lineTo(bx - 30, -200); c.moveTo(bx + 40, -120); c.lineTo(bx + 55, -150); c.stroke();
+  if (BS.stage === 1) drawRodina(c, W * .8, time);
+  else if (BS.stage === 2) {
+    const V = BS.v, mv = V.mode === 'charge' || V.mode === 'enter';
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(V.x, 0, 60, 8, 0, 0, 7); c.fill();
+    c.save(); c.translate(V.x, -V.h); c.rotate(V.mode === 'charge' ? (V.h > 0 ? (V.x > px ? -.25 : .25) : -.04) : 0);
+    c.save(); c.translate(6, -52); c.scale(.62, .62); c.rotate(V.mode === 'charge' ? -.35 : 0); drawRodina(c, 0, time); c.restore();
+    drawVespa(c, 0, 0, V.wheelie, time, mv);
+    c.restore();
+    if (V.mode === 'rev') hudText(c, V.hop ? 'HOP!' : 'VROEM!', V.x, -250, 22, 'center', V.hop ? '#8ad8ff' : '#ff8a5a');
+    if (V.mode === 'dizzy') for (let i = 0; i < 4; i++) { const a = time / 180 + i * 1.57; hudText(c, '★', V.x + Math.cos(a) * 30, -240 + Math.sin(a) * 8, 14, 'center', '#ffe14f'); }
+  }
+  else if (BS.stage === 3) drawGiga(c, time);
+  if (BS.fx.ijs > 0 && BS.trans <= 0) {   // ijsblok om Rodina
+    const a = Math.min(1, BS.fx.ijs * 2) * .55, ix = tx, iw = BS.stage === 3 ? 260 : 144, ih = BS.stage === 3 ? 380 : 270;
+    c.fillStyle = `rgba(170,225,255,${a})`; rr(c, ix - iw / 2, -ih, iw, ih, 16); c.fill(); c.strokeStyle = `rgba(255,255,255,${a + .2})`; c.lineWidth = 3; c.stroke();
   }
   for (const p of BS.proj) drawBossProj(c, p, time);
+  for (const z of BS.hz) {
+    if (z.type === 'bomb') { drawBossProj(c, {type: 'v', x: z.x, y: z.y, rot: z.rot, delay: 0}, time); c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(z.x + z.vx * Math.max(0, -z.y) / 900, 0, 16, 4, 0, 0, 7); c.fill(); }
+    else if (z.type === 'wave') { c.fillStyle = 'rgba(200,220,255,.55)'; c.beginPath(); c.moveTo(z.x - 20, 0); c.quadraticCurveTo(z.x, -46, z.x + 20, 0); c.fill(); c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 2; c.stroke(); }
+    else if (z.type === 'helm') { c.save(); c.translate(z.x, z.y - 12); c.rotate(z.rot); c.fillStyle = '#e0301e'; c.beginPath(); c.arc(0, 0, 15, Math.PI, 0); c.fill(); c.fillStyle = '#222'; c.fillRect(-15, 0, 30, 4); c.fillStyle = '#fff'; c.fillRect(-4, -14, 8, 14); c.restore(); }
+    else if (z.type === 'bolt') { const y0 = z.y - z.h; const g2 = c.createLinearGradient(z.x - z.w / 2, 0, z.x + z.w / 2, 0); g2.addColorStop(0, 'rgba(255,255,255,.95)'); g2.addColorStop(.3, 'rgba(255,60,40,.9)'); g2.addColorStop(1, 'rgba(255,60,40,0)');
+      c.fillStyle = g2; rr(c, z.x - z.w / 2, y0, z.w, z.h, z.h / 2); c.fill(); c.fillStyle = 'rgba(255,255,255,.8)'; rr(c, z.x - z.w / 2, y0 + z.h * .35, z.w * .6, z.h * .3, 4); c.fill(); }
+    else if (z.type === 'ring') { c.save(); c.translate(z.x, -20); c.rotate(z.rot); c.strokeStyle = 'rgba(230,235,255,.9)'; c.lineWidth = 7; c.beginPath(); c.arc(0, 0, 16, 0, 7); c.stroke(); c.strokeStyle = 'rgba(180,120,255,.6)'; c.lineWidth = 3; c.stroke(); c.restore(); }
+    else if (z.type === 'barrel') { c.save(); c.translate(z.x, -24); c.rotate(z.rot); const g3 = c.createRadialGradient(-6, -6, 3, 0, 0, 26); g3.addColorStop(0, '#d8a060'); g3.addColorStop(1, '#6a3a18'); c.fillStyle = g3; c.beginPath(); c.arc(0, 0, 24, 0, 7); c.fill(); c.strokeStyle = '#120a05'; c.lineWidth = 3; c.stroke(); c.strokeStyle = '#c8ccd4'; c.beginPath(); c.arc(0, 0, 17, 0, 7); c.stroke(); c.restore(); }
+  }
   for (const s of BS.shots) { if (s.hot) { c.fillStyle = 'rgba(255,150,40,.45)'; c.beginPath(); c.arc(s.x, s.y, s.mega ? 30 : 20, 0, 7); c.fill(); } drawWorst(c, s.x, s.y, s.rot, s.mega ? 44 : 24); }
   drawBossPU(c, time);
   for (const q of BS.clouds) { c.globalAlpha = Math.min(.5, q.life / q.max * .75); c.fillStyle = '#eef0f6'; c.beginPath(); c.arc(q.x, q.y, q.r, 0, Math.PI * 2); c.fill(); } c.globalAlpha = 1;
   if (state !== 'dead') {
     c.globalAlpha = BS.inv > 0 && Math.floor(time / 70) % 2 ? .35 : 1;
-    drawGuy(c, px, BS.py, BS.pground ? 0 : Math.max(-.3, Math.min(.3, BS.pvy / 2600)), 0, BS.pground, save.skin, time, {stand: true, face: BS.inv > 0 ? 'dead' : '', air: BS.airB || 0, vy: BS.pvy, land: BS.land || 0, throwT: BS.thr || 0, boost: BS.fx.curry > 0, hurt: Math.max(0, (BS.inv - .9) / .4)});
+    drawGuy(c, px, BS.py, BS.pground ? 0 : Math.max(-.3, Math.min(.3, BS.pvy / 2600)), 0, BS.pground, save.skin, time, {stand: true, face: BS.inv > 0 ? 'dead' : '', air: BS.airB || 0, vy: BS.pvy, land: BS.land || 0, throwT: BS.thr || 0, boost: BS.fx.curry > 0});
     c.globalAlpha = 1;
   }
   c.restore();
-  c.save(); c.translate(0, 0); drawParticles(c); c.restore();
-  // HUD
+  drawParticles(c);
+  // HUD: levensbalk per fase
   const bw = Math.min(320, W * .46), x0 = (W - bw) / 2;
   rr(c, x0, 14, bw, 16, 8); c.fillStyle = 'rgba(43,26,18,.7)'; c.fill(); c.strokeStyle = '#f7efdc'; c.lineWidth = 2; c.stroke();
   const g = c.createLinearGradient(x0, 0, x0 + bw, 0); g.addColorStop(0, '#e0301e'); g.addColorStop(1, '#7a1414');
-  rr(c, x0 + 2, 16, Math.max(0, (bw - 4) * BS.hp / BOSS_HP), 12, 6); c.fillStyle = g; c.fill();
-  c.fillStyle = '#f7efdc'; c.fillRect(x0 + bw / 3, 14, 2, 16); c.fillRect(x0 + bw * 2 / 3, 14, 2, 16);
-  hudText(c, 'R O D I N A' + (bossPhase() === 2 ? '  ·  WOEDEND' : ''), W / 2, 47, 13, 'center', bossPhase() === 2 ? '#ffb0a0' : '#fff');
+  const hpk = BS.trans > 0 && BS.switched ? Math.min(1, (1.6 - BS.trans) / 1) : BS.hp / BS.hpMax;
+  rr(c, x0 + 2, 16, Math.max(0, (bw - 4) * hpk), 12, 6); c.fillStyle = g; c.fill();
+  for (let i = 1; i <= 3; i++) { c.fillStyle = i < BS.stage ? 'rgba(255,255,255,.25)' : i === BS.stage ? '#ffe14f' : 'rgba(255,255,255,.6)'; c.beginPath(); c.arc(x0 + bw + 14 + (i - 1) * 13, 22, 4.5, 0, 7); c.fill(); }
+  hudText(c, `${STAGE_TITLE[BS.stage]}  ·  FASE ${BS.stage}/3` + (BS.stage === 1 && bossPhase() === 1 ? '  ·  WOEDEND' : ''), W / 2, 47, 12.5, 'center', '#fff');
   drawHearts(c, BS.lives, 12, 32);
   drawWorst(c, 24, 50, -0.3, 20); hudText(c, `× ${worstCount}`, 42, 56, 16);
-  // tijd en record
   hudText(c, `⏱ ${fmtT(BS.t)}`, W / 2, 68, 17, 'center', '#fff');
-  if (save.bossBest) hudText(c, `record ${fmtT(save.bossBest.v)}`, W / 2, 83, 10.5, 'center', BS.t > save.bossBest.v ? 'rgba(255,170,150,.9)' : 'rgba(255,255,255,.75)');
-  { // actieve power-ups
-    let yy = 84; const F = BS.fx;
+  const best = save.rodinaBest; if (best && !BS.replay) hudText(c, `record ${fmtT(best.v)}`, W / 2, 83, 10.5, 'center', BS.t > best.v ? 'rgba(255,170,150,.9)' : 'rgba(255,255,255,.75)');
+  { let yy = 84; const F = BS.fx;
     const chip = (t, txt, k) => { c.fillStyle = 'rgba(43,26,18,.72)'; rr(c, 8, yy - 11, 112, 22, 11); c.fill(); drawPUIcon(c, t, 22, yy, time, .42); hudText(c, txt, 40, yy + 5, 12, 'left'); if (k != null) { c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(40, yy + 9, 50, 3); c.fillStyle = '#ffe14f'; c.fillRect(40, yy + 9, 50 * k, 3); } yy += 24; };
     if (F.espresso > 0) chip('espresso', 'snel gooien', F.espresso / BPU.espresso.dur);
     if (F.curry > 0) chip('curry', 'onkwetsbaar', F.curry / BPU.curry.dur);
     if (F.ijs > 0) chip('ijs', 'Rodina bevroren', F.ijs / BPU.ijs.dur);
-    if (F.mega > 0) chip('mega', `mega-worst ×${F.mega}`, null);
-    if (F.doos) chip('doos', 'schild', null);
-  }
-  if (state === 'play') {
+    if (F.mega > 0) chip('mega', `mega-worst ×${F.mega}`, null); }
+  if (BS.replay) { c.fillStyle = 'rgba(176,34,43,.85)'; rr(c, W / 2 - 110, 92, 220, 24, 12); c.fill(); hudText(c, `▶ REPLAY · ${BS.replay.name}`, W / 2, 109, 13, 'center', '#fff'); }
+  if (state === 'play' && BS.trans <= 0) {
     if (BS.puBan > 0) hudText(c, bannerTxt, W / 2, H * .3, 24, 'center', '#ffe14f');
-    if (BS.cyc === 'stun') hudText(c, 'MOE! Dubbele schade', bx, groundY - 262, 15, 'center', '#ffe14f');
-    if (BS.cyc === 'shield' && !(BS.fx.ijs > 0)) hudText(c, 'Niet gooien!', bx - 40, groundY - 262, 14, 'center', '#cfd6e2');
-    if (BS.fx.ijs > 0) hudText(c, 'BEVROREN!', bx, groundY - 282, 16, 'center', '#c8f0ff');
-    // knoppen
-    for (const [bxx, lab] of [[70, 'SPRING'], [W - 70, 'GOOI']]) {
+    if (BS.stage === 1) {
+      if (BS.cyc === 'stun') hudText(c, 'MOE! Dubbele schade', tx, groundY - 262, 15, 'center', '#ffe14f');
+      if (BS.cyc === 'shield' && !(BS.fx.ijs > 0)) hudText(c, 'Niet gooien!', tx - 40, groundY - 262, 14, 'center', '#cfd6e2');
+      if (banner > 0) hudText(c, 'Rodina wordt bozer…', W / 2, H * .38, 30, 'center', '#ffb45a');
+    }
+    if (BS.stage === 2 && BS.v.mode === 'dizzy') hudText(c, 'DUIZELIG! Dubbele schade', tx, groundY - 270, 15, 'center', '#ffe14f');
+    if (BS.fx.ijs > 0) hudText(c, 'BEVROREN!', tx, groundY - 290, 16, 'center', '#c8f0ff');
+    if (!BS.replay) for (const [bxx, lab] of [[70, 'SPRING'], [W - 70, 'GOOI']]) {
       c.globalAlpha = .55; c.fillStyle = 'rgba(43,26,18,.6)'; c.beginPath(); c.arc(bxx, H - 64, 50, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#f7efdc'; c.lineWidth = 2; c.stroke();
       c.globalAlpha = .9; c.fillStyle = '#f7efdc'; c.font = 'bold 15px Georgia,serif'; c.textAlign = 'center'; c.fillText(lab, bxx, H - 59); c.globalAlpha = 1;
     }
-    if (BS.hint > 0) drawHint(c, 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · gooi worst', BS.hint);
-    if (banner > 0) hudText(c, bossPhase() === 2 ? 'RODINA IS WOEDEND!' : 'Rodina wordt bozer…', W / 2, H * .38, 30, 'center', '#ffb45a');
+    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · gooi worst' : BS.stage === 2 ? 'Spring over de Vespa en de schokgolven · blijf staan bij HOP! · gooi als ze stilstaat' : 'Spring over lage stralen, ringen en vaten · blijf laag bij hoge stralen · gooi in haar mond', BS.hint);
   }
-  if (BS.splat > 0) { // tiramisu in je gezicht
-    c.globalAlpha = Math.min(1, BS.splat) * .85;
+  if (BS.splat > 0) { c.globalAlpha = Math.min(1, BS.splat) * .85;
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#f3e3c3' : '#5a3219'; c.beginPath(); c.ellipse(rnd(i + 3) * W, rnd(i + 40) * H * .8 + (1.8 - BS.splat) * 30, 40 + rnd(i) * 50, 30 + rnd(i + 9) * 40, rnd(i) * 3, 0, Math.PI * 2); c.fill(); }
-    c.globalAlpha = 1;
+    c.globalAlpha = 1; }
+  // overgang: zwart, titel van de nieuwe plek
+  if (BS.trans > 0) {
+    const T = BS.trans, a = T > 2.2 ? 0 : T > 1.6 ? (2.2 - T) / .6 : T > .9 ? 1 : T / .9;
+    if (T > 2.2) hudText(c, BS.transTo === 2 ? 'GENOEG! IK PAK MIJN VESPA!' : 'JIJ DENKT DAT JE GEWONNEN HEBT?!', W / 2, H * .36, 24, 'center', '#ffb45a');
+    c.fillStyle = `rgba(0,0,0,${a})`; c.fillRect(-20, -20, W + 40, H + 40);
+    if (T < 1.9) { c.globalAlpha = Math.min(1, (1.9 - T) * 3) * Math.min(1, T * 2.5); hudText(c, `FASE ${BS.transTo}`, W / 2, H * .42, 44, 'center', '#ffe14f'); hudText(c, STAGE_PLACE[BS.transTo], W / 2, H * .42 + 34, 20, 'center', '#fff'); c.globalAlpha = 1; }
   }
   if (flash > 0) { c.fillStyle = `rgba(255,240,220,${flash * .35})`; c.fillRect(-20, -20, W + 40, H + 40); }
   if (state === 'dead') { drawRoyd(c, deadTimer); drawQuote(c, W / 2, H / 2 + 26, Math.max(0, Math.min(1, (deadTimer - .25) * 4))); }
@@ -2891,7 +3118,7 @@ function drawFnar(time) {
 // ---- Klassement (per toestel)
 let boardTab = 'endless', lastScore = null;
 const DB_URL = 'https://roy-runner-default-rtdb.europe-west1.firebasedatabase.app';
-let boardScope = 'online', online = {endless: null, boss: null, pizza: null, fles: null, bake: null}, onlineState = 'idle';
+let boardScope = 'online', online = {endless: null, rodina: null, pizza: null, fles: null, bake: null}, onlineState = 'idle';
 function myId() { if (!save.pid) { save.pid = 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); persist(); } return save.pid; }
 async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klassement nooit blijft hangen
   const ac2 = new AbortController(), tm = setTimeout(() => ac2.abort(), 7000);
@@ -2899,7 +3126,7 @@ async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klasseme
 }
 async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onder je eigen sleutel
   const nm = (save.name || 'Roy').slice(0, 12) || 'Roy';
-  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : (save.bossBest ? {n: nm, v: save.bossBest.v, x: save.bossBest.x || 0} : null);
+  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: REPLAY_VER} : null) : null;
   if (!rec) return;
   rec.t = {'.sv': 'timestamp'};
   try { await netFetch(`${DB_URL}/best/${kind}/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}); } catch (e) {}
@@ -2907,8 +3134,8 @@ async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onde
 async function loadOnline() {
   onlineState = 'loading'; renderBoard();
   try {
-    await Promise.all(['endless', 'boss', 'pizza', 'fles'].map(pushBest));
-    const [a, b, pz, fl] = await Promise.all(['endless', 'boss', 'pizza', 'fles'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
+    await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(pushBest));
+    const [a, b, pz, fl] = await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
     if (a === null && b === null) throw new Error('offline');
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
@@ -2920,7 +3147,7 @@ async function loadOnline() {
       }
       return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
-    online = {endless: list(a, false), boss: list(b, true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
+    online = {endless: list(a, false), rodina: list(b, true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
 }
@@ -2930,10 +3157,9 @@ function addScore(kind, v, extra) {
   if ((kind === 'pizza' || kind === 'fles' || kind === 'bake') && v < 1) return;
   const e = {n: (save.name || 'Roy').slice(0, 12), v, x: extra, d: new Date().toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'})};
   const L = save.board[kind]; L.push(e);
-  L.sort(kind !== 'boss' ? (a, b) => b.v - a.v : (a, b) => a.v - b.v);
+  L.sort(kind !== 'rodina' ? (a, b) => b.v - a.v : (a, b) => a.v - b.v);
   if (L.length > 10) L.length = 10;
   lastScore = L.includes(e) ? e : null;
-  if (kind === 'boss' && (!save.bossBest || v < save.bossBest.v)) save.bossBest = {v, x: extra};
   persist(); pushBest(kind);
 }
 function renderBoard() {
@@ -2943,13 +3169,18 @@ function renderBoard() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === boardTab));
   $('scopeBtn').textContent = boardScope === 'online' ? 'Iedereen' : 'Dit toestel';
   $('boardNote').textContent = boardScope !== 'online' ? 'Scores van dit toestel' : onlineState === 'loading' ? 'Klassement laden…' : onlineState === 'fail' ? 'Geen verbinding. Open het spel in Safari of Chrome, niet in een voorbeeld.' : 'Beste score per naam';
-  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', boss: 'Rodina is nog niet verslagen.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.', bake: "Nog geen pizza's geserveerd."}[boardTab]}</div>`;
+  el.innerHTML = L.length ? '' : `<div class="empty">${{endless: 'Nog geen afstanden. Ga rennen!', rodina: 'Nog niemand heeft alle drie de fases gehaald.', pizza: 'Nog geen dozen gestapeld.', fles: 'Nog geen flesjes kapot.', bake: "Nog geen pizza's geserveerd."}[boardTab]}</div>`;
   L.forEach((e, i) => {
     const r = document.createElement('div'); r.className = 'brow' + ((useOnline ? e.mine : e === lastScore) ? ' new' : '');
     const nm = document.createElement('span'); nm.className = 'n'; nm.textContent = e.n;
     r.innerHTML = `<span class="r">${i + 1}.</span>`; r.appendChild(nm);
     const dt = useOnline ? (e.t ? new Date(e.t).toLocaleDateString('nl-NL', {day: 'numeric', month: 'short'}) : '') : (e.d || '');
     r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'bake' ? e.v + " pizza's" : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
+    if (boardTab === 'rodina') {   // replay terugkijken
+      const rec = useOnline ? e : (save.rodinaBest && Math.abs(save.rodinaBest.v - e.v) < .05 ? Object.assign({n: save.name || 'Roy'}, save.rodinaBest) : null);
+      if (rec && rec.r && rec.rv === REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
+        b.onclick = ev => { ev.stopPropagation(); startReplay({s: rec.s, r: rec.r, n: rec.n}); }; r.appendChild(b); }
+    }
     el.appendChild(r);
   });
   if (useOnline && L.length) $('boardNote').textContent = `${L.length} ${L.length === 1 ? 'speler' : 'spelers'} · beste score per naam`;
@@ -2970,17 +3201,7 @@ function dragScroll(el, upd) {   // slepen + uitrollen, werkt ook als het scherm
 }
 function skinMoreUpd() { const el = $('skinGrid'); $('skinMore').classList.toggle('on', el.scrollTop + el.clientHeight < el.scrollHeight - 4); }
 dragScroll(document.getElementById('skinGrid'), skinMoreUpd);
-(() => {
-  const el = document.getElementById('boardList'); let id = null, last = 0, vel = 0, lt = 0, raf = 0;
-  const pos = e => LAY.portrait ? -e.clientX : e.clientY;   // in staand is de lijst 90° gedraaid
-  el.addEventListener('pointerdown', e => { id = e.pointerId; last = pos(e); vel = 0; lt = performance.now(); cancelAnimationFrame(raf); });
-  window.addEventListener('pointermove', e => { if (e.pointerId !== id) return; const p = pos(e), now = performance.now(), d = last - p;
-    el.scrollTop += d; vel = d / Math.max(1, now - lt); last = p; lt = now; boardMoreUpd(); });
-  const up = e => { if (e.pointerId !== id) return; id = null;
-    const roll = () => { if (Math.abs(vel) < .02) return; el.scrollTop += vel * 16; vel *= .94; boardMoreUpd(); raf = requestAnimationFrame(roll); }; roll(); };
-  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
-  el.addEventListener('wheel', e => { el.scrollTop += e.deltaY; boardMoreUpd(); }, {passive: true});
-})();
+dragScroll(document.getElementById('boardList'), boardMoreUpd);
 function refreshWallet() { document.querySelectorAll('[data-wallet]').forEach(e => e.textContent = `🌭 ${save.wallet}`); }
 function showView(name, center) {
   if (name && name !== 'name' && (save.name || '').length < 2) { name = 'name'; center = true; }   // eerst een naam, dan pas spelen
@@ -3004,7 +3225,7 @@ function renderModes() {
   const el = $('modeList'); if (!el) return; el.innerHTML = '';
   [
     ['run', 'Run Roy Run!', 'Spring over alles heen. Het gaat steeds sneller.', save.bestDist ? save.bestDist + ' m' : 'Nieuw', save.bestDist ? 'jouw record' : '', () => { goFullscreen(); startRun('endless'); }],
-    ['boss', 'Eindbaas Rodina', 'Ontwijk wat ze gooit en gooi worst terug.', save.bossBest ? save.bossBest.v.toFixed(1) + ' s' : save.bossWins ? save.bossWins + '×' : 'Nieuw', save.bossBest ? 'snelste winst' : save.bossWins ? 'verslagen' : '', () => { goFullscreen(); startRun('boss'); }],
+    ['boss', 'Eindbaas Rodina', 'Drie fases, drie plekken. Gooi worst terug.', save.rodinaBest ? fmtT(save.rodinaBest.v) : 'Nieuw', save.rodinaBest ? 'record' : '', () => { goFullscreen(); startRun('boss'); }],
     ['pizza', 'Pizzatoren', 'Kantel je telefoon en houd de stapel dozen in balans.', save.bestPizza ? save.bestPizza + ' dozen' : 'Nieuw', save.bestPizza ? 'record' : '', () => { tiltEnable(); goFullscreen(); startRun('pizza'); }],
     ['fles', "Joyce's flesjes", 'Tik de flesjes kapot. Niet op Roy tikken!', save.bestFles ? save.bestFles + ' flesjes' : 'Nieuw', save.bestFles ? 'record' : '', () => { goFullscreen(); startRun('shoot'); }],
     ['fnar', "Five Nights at Roy's", 'Overleef de nachtdienst. Volume aan…', save.fnarBest ? 'Nacht ' + Math.min(5, save.fnarBest) : 'Nieuw', save.fnarBest ? (save.fnarBest >= 5 ? 'alles gehaald' : 'gehaald') : '', () => { goFullscreen(); audio(); startRun('fnar'); }],
@@ -3025,7 +3246,7 @@ function renderModes() {
     b.onclick = () => { audio(); fn(); }; el.appendChild(b);
   });
 }
-function toMenu() { if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
+function toMenu() { theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
 
 function renderLevels() {
   const el = $('dishes'); el.innerHTML = '';
@@ -3099,8 +3320,9 @@ cv.addEventListener('pointerdown', e => {
   const p = gamePt(e);
   if (mode === 'shoot') shootAt(p.x, p.y);
   else if (mode === 'fnar') fnTap(p.x, p.y);
-  else if (mode === 'boss' && p.x > W / 2) bossThrow();
-  else { jumpPtrs.add(e.pointerId); syncHeld(); jumpPressed = true; jumpBuf = .14; }
+  else if (mode === 'boss' && BS && BS.replay) return;
+  else if (mode === 'boss' && p.x > W / 2) BS.qThrow = true;
+  else { jumpPtrs.add(e.pointerId); syncHeld(); jumpPressed = true; jumpBuf = .14; if (mode === 'boss' && BS) BS.qJump = true; }
 });
 // Springen per vinger bijhouden: loslaten van de gooi-vinger mag een ingedrukte springvinger niet uitzetten,
 // en een heel korte tik wordt 0,14 s onthouden zodat hij nooit tussen twee beeldjes valt
@@ -3108,13 +3330,15 @@ const jumpPtrs = new Set(), slidePtrs = new Set(); let keyJump = false, keySlide
 const SLIDE_BTN = {x: 64, dy: 62, r: 44};
 function syncHeld() { held = jumpPtrs.size > 0 || keyJump; slideHeld = slidePtrs.size > 0 || keySlide; }
 for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { jumpPtrs.delete(e.pointerId); slidePtrs.delete(e.pointerId); pzPtrs.delete(e.pointerId); syncHeld(); });
+window.addEventListener('touchend', e => { if (!e.touches || e.touches.length === 0) { jumpPtrs.clear(); slidePtrs.clear(); syncHeld(); } }, {passive: true});
+window.addEventListener('blur', () => { jumpPtrs.clear(); slidePtrs.clear(); keyJump = false; syncHeld(); });
 window.addEventListener('pointermove', e => { if (pzPtrs.has(e.pointerId)) pzPtrs.set(e.pointerId, gamePt(e).x); });
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
   if (mode === 'pizza' && ['arrowleft', 'arrowright', 'a', 'd'].includes(e.key.toLowerCase())) { e.preventDefault(); pzKeys.add(e.key.toLowerCase()); return; }
   if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) { e.preventDefault(); if (!e.repeat && state === 'play') { audio(); keyJump = true; syncHeld(); jumpPressed = true; jumpBuf = .14; } }
   else if (['ArrowDown', 's', 'S'].includes(e.key)) { e.preventDefault(); if (!e.repeat && state === 'play' && mode === 'endless') { keySlide = true; syncHeld(); slideBuf = .14; } }
-  else if (['f', 'F', 'ArrowRight', 'Enter'].includes(e.key)) { if (!e.repeat && mode === 'boss') bossThrow(); }
+  else if (['f', 'F', 'ArrowRight', 'Enter'].includes(e.key)) { if (!e.repeat && mode === 'boss' && BS) BS.qThrow = true; }
   else if (e.key === 'Escape' || e.key === 'p') { if (state === 'play') pause(); else if (state === 'pause') $('resumeBtn').onclick(); }
 });
 window.addEventListener('keyup', e => { pzKeys.delete(e.key.toLowerCase()); if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) { keyJump = false; syncHeld(); } if (['ArrowDown', 's', 'S'].includes(e.key)) { keySlide = false; syncHeld(); } });
