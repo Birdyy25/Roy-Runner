@@ -2144,8 +2144,8 @@ function bossStep(dt) {
   // gevaren van fase 2 en 3 (rechthoeken)
   const ry1 = BS.py - 92, ry2 = BS.py - 2;
   for (const z of BS.hz) {
-    z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt;
-    if (z.vy !== undefined) { z.vy += (z.g || 0) * dt; z.y += z.vy * dt; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } }
+    const zs = BS.fx.ijs > 0 ? .25 : 1; z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt * zs;
+    if (z.vy !== undefined) { z.vy += (z.g || 0) * dt * zs; z.y += z.vy * dt * zs; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } }
     if (z.rot !== undefined) z.rot += (z.vr || 0) * dt;
     if (z.life !== undefined) { z.life -= dt; if (z.life <= 0) { z.dead = true; continue; } }
     if (!z.harm) { if (z.x < -200 || z.x > W + 260) z.dead = true; continue; }
@@ -2217,6 +2217,9 @@ function bossStage2(dt) {
   const V = BS.v, px = W * .2, park = W * .8, lowHp = BS.hp < BS.hpMax * .45, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
   V.t += dtR; V.throwT = Math.max(0, V.throwT - dt); V.wheelie += ((V.mode === 'rev' && V.hop ? 1 : 0) - V.wheelie) * Math.min(1, dt * 8);
   for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 18 * dt; } BS.clouds = BS.clouds.filter(q => q.life > 0);
+  if (fz && (V.mode === 'charge' || V.mode === 'rev')) {   // bevroren tijdens een aanval: ze glijdt terug naar haar plek en staat daar bevroren
+    if (V.x < -60 || V.x > W + 60) V.x = W + 170; V.mode = 'enter'; V.h = 0; V.charges = 0; V.loops++;
+  }
   if (V.mode === 'enter') { V.x += (park - V.x) * Math.min(1, dt * 3.2); if (Math.abs(V.x - park) < 4) { V.x = park; V.mode = (V.loops % 3 === 2) ? 'dizzy' : 'park'; V.t = 0; V.shots = 0; if (V.mode === 'dizzy') { tone(500, 200, .5, 'triangle', .07); popText('DUIZELIG!', park, groundY - 230, '#ffe14f', 22); } } }
   else if (V.mode === 'park') {   // staat stil: gooit vapebommen en helmen, kwetsbaar
     const every = lowHp ? .62 : .8, dur = lowHp ? 2.5 : 3;
@@ -2231,8 +2234,8 @@ function bossStage2(dt) {
     if (V.t > dur) { V.mode = 'rev'; V.t = 0; V.hop = BS.rng() < (lowHp ? .5 : .38); tone(110, 220, .9, 'sawtooth', .07); }
   }
   else if (V.mode === 'rev') {   // gas geven: waarschuwing
-    if (Math.random() < dt * 30) BS.clouds.push({x: V.x + 70, y: -24, r: 8 + Math.random() * 8, vy: -20, life: .6, max: .6});
-    if (V.t > (lowHp ? .62 : .75)) { V.mode = 'charge'; V.t = 0; V.charges++; V.vx = -(lowHp ? 1000 : 900); tone(160, 90, .6, 'sawtooth', .1); }
+    if (!V.hop && Math.random() < dt * 40) BS.clouds.push({x: V.x + 64 + Math.random() * 10, y: -20, r: 7 + Math.random() * 9, vy: -18, life: .55, max: .55});   // gas geven: rook uit de uitlaat
+    if (V.t > (lowHp ? .62 : .72)) { V.mode = 'charge'; V.t = 0; V.charges++; V.vx = -(lowHp ? 1000 : 900); tone(160, 90, .6, 'sawtooth', .1); }
   }
   else if (V.mode === 'charge') {
     V.x += V.vx * dtR;
@@ -2257,6 +2260,8 @@ function bossStage3(dt) {
   if (G.mode === 'rise') { if (G.t > 1.4) { G.mode = 'idle'; G.t = 0; } return; }
   if (G.mode === 'idle') { if (G.t > (rage ? .35 : .65)) { if (!G.q.length) G.q = G_ATT[Math.floor(BS.rng() * G_ATT.length)].slice(); G.cur = G.q.shift(); G.mode = 'tell'; G.t = 0; G.k = 0; } return; }
   if (G.mode === 'tell') {   // ogen gloeien op: wat komt er?
+    if (G.cur === 'rings' && Math.random() < dt * 14) BS.clouds.push({x: G.x - 30 + (Math.random() - .5) * 30, y: G.y + 70, r: 10 + Math.random() * 10, vy: -40, life: .8, max: .8});
+    if (G.cur === 'barrels') G.shake = .1;
     if (G.t > (rage ? .75 : .95)) { G.mode = 'fire'; G.t = 0; G.k = 0; }
     return;
   }
@@ -2418,18 +2423,14 @@ function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
     const pr = 30 + Math.sin(time / 90) * 5; c.strokeStyle = 'rgba(255,225,79,.9)'; c.lineWidth = 4; c.beginPath(); c.arc(cx - 30, cy + 60, pr, 0, 7); c.stroke();
     hudText(c, 'NU! ×3', cx - 30, cy + 118, 22, 'center', '#ffe14f');
   }
-  // waarschuwing: balk precies op de hoogte van de straal, en boven Roy wat je moet doen
-  const px = W * .2, bl = .55 + .45 * Math.abs(Math.sin(time / 100));
-  const band = (hi, a) => { const y0 = hi ? -146 : -32, h0 = hi ? 38 : 28; c.fillStyle = hi ? `rgba(138,216,255,${.32 * a})` : `rgba(255,70,50,${.32 * a})`; c.fillRect(0, y0, G.x - 80, h0); c.strokeStyle = hi ? `rgba(138,216,255,${.85 * a})` : `rgba(255,90,70,${.85 * a})`; c.lineWidth = 2; c.setLineDash([12, 8]); c.strokeRect(0, y0, G.x - 80, h0); c.setLineDash([]); };
-  let say = null;
-  if (G.mode === 'tell' && G.cur) {
-    if (G.cur === 'lowbolt') { band(false, bl); say = 'low'; }
-    else if (G.cur === 'highbolt') { band(true, bl); say = 'high'; }
-    else if (G.cur === 'combo') { band(false, bl); band(true, bl * .6); say = 'combo'; }
-    else say = 'low';
+  // de straal laadt eerst op als gloeiende bol, precies op de hoogte waar hij straks langs komt (geen uitleg: lees het zelf)
+  if (G.mode === 'tell' && G.cur && G.cur !== 'rings' && G.cur !== 'barrels') {
+    const k2 = Math.min(1, G.t / (BS.hp < BS.hpMax * .35 ? .75 : .95)), ox = G.x - 80;
+    const orb = (y, a) => { const r = 6 + k2 * 14; const g2 = c.createRadialGradient(ox, y, 1, ox, y, r * 2.2); g2.addColorStop(0, `rgba(255,255,255,${a})`); g2.addColorStop(.35, `rgba(255,70,40,${a * .9})`); g2.addColorStop(1, 'rgba(255,70,40,0)'); c.fillStyle = g2; c.beginPath(); c.arc(ox, y, r * 2.2, 0, 7); c.fill();
+      for (let i = 0; i < 5; i++) { const an = time / 90 + i * 1.25, d = r * 2.6 * (1 - k2 * .6); c.fillStyle = `rgba(255,140,90,${a * .8})`; c.beginPath(); c.arc(ox + Math.cos(an) * d, y + Math.sin(an) * d, 2, 0, 7); c.fill(); } };
+    if (G.cur === 'lowbolt' || G.cur === 'combo') orb(-19, 1);
+    if (G.cur === 'highbolt' || G.cur === 'combo') orb(-127, G.cur === 'combo' ? .55 : 1);
   }
-  for (const z of BS.hz) if (z.harm && z.x - z.w / 2 > px - 20) { const tt = (z.x - z.w / 2 - px) / -z.vx; if (tt < 1.1) { if (z.type === 'bolt' && z.hi) { say = say === 'low' ? 'combo' : say || 'high'; } else if (!say || say === 'high') say = say === 'high' ? 'combo' : 'low'; } }
-  if (say) { c.globalAlpha = bl; hudText(c, say === 'low' ? '⬆ SPRING!' : say === 'high' ? '✋ BLIJF STAAN!' : '⬆ SPRING… dan ✋ STAAN!', px + (say === 'combo' ? 40 : 0), -150, 20, 'center', say === 'high' ? '#8ad8ff' : '#ff8a5a'); c.globalAlpha = 1; }
 }
 function drawStreet(camX, time) {   // nachtelijke Sardijnse straat met huizen, lampjes en de maan
   const c = ctx, off = camX * .3;
@@ -2463,23 +2464,11 @@ function drawBoss(time) {
   else if (BS.stage === 2) {
     const V = BS.v, mv = V.mode === 'charge' || V.mode === 'enter';
     c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(V.x, 0, 60, 8, 0, 0, 7); c.fill();
-    c.save(); c.translate(V.x, -V.h); c.rotate(V.mode === 'charge' ? (V.h > 0 ? (V.x > px ? -.25 : .25) : -.04) : 0);
-    c.save(); c.translate(6, -52); c.scale(.62, .62); c.rotate(V.mode === 'charge' ? -.35 : 0); drawRodina(c, 0, time); c.restore();
+    const shk = V.mode === 'rev' && !V.hop ? (Math.random() - .5) * 3 : 0;
+    c.save(); c.translate(V.x + shk, -V.h); c.rotate(V.mode === 'charge' ? (V.h > 0 ? (V.x > px ? -.25 : .25) : -.04) : 0);
+    c.save(); c.translate(6, -52); c.scale(.62, .62); c.rotate(V.mode === 'charge' || (V.mode === 'rev' && !V.hop) ? -.35 : 0); drawRodina(c, 0, time); c.restore();
     drawVespa(c, 0, 0, V.wheelie, time, mv, V.hop && (V.mode === 'rev' || V.mode === 'charge') ? 1 : 0);
     c.restore();
-    if ((V.mode === 'rev' || V.mode === 'charge') && V.x > px - 40) {
-      const blink = V.mode === 'rev' ? .6 + .4 * Math.abs(Math.sin(time / 110)) : 1;
-      if (V.hop) {   // blauwe stippelboog over Roy heen: blijf staan
-        c.setLineDash([10, 8]); c.lineWidth = 4; c.strokeStyle = `rgba(138,216,255,${.8 * blink})`; c.beginPath();
-        for (let k = 0; k <= 40; k++) { const xx = px + 260 - k * 13, d = (xx - px) / 190, hh = Math.abs(d) < 1 ? 175 * (1 - d * d) : 0; k ? c.lineTo(xx, -hh - 30) : c.moveTo(xx, -hh - 30); } c.stroke(); c.setLineDash([]);
-        c.globalAlpha = blink; hudText(c, '✋ BLIJF STAAN!', px, -132, 20, 'center', '#8ad8ff'); c.globalAlpha = 1;
-      } else {   // rode baan over de vloer naar Roy: springen
-        c.fillStyle = `rgba(224,48,30,${.28 * blink})`; c.fillRect(0, -10, V.x - 50, 10);
-        c.fillStyle = `rgba(255,120,90,${.9 * blink})`; for (let xx = V.x - 90; xx > 20; xx -= 70) { c.beginPath(); c.moveTo(xx, -5); c.lineTo(xx + 18, -14); c.lineTo(xx + 18, 4); c.closePath(); c.fill(); }
-        c.globalAlpha = blink; hudText(c, '⬆ SPRING!', px, -132, 20, 'center', '#ff8a5a'); c.globalAlpha = 1;
-      }
-    }
-    if (V.mode === 'rev') hudText(c, V.hop ? 'HOP!' : 'VROEM!', V.x, -250, 30, 'center', V.hop ? '#8ad8ff' : '#ff8a5a');
     if (V.mode === 'dizzy') for (let i = 0; i < 4; i++) { const a = time / 180 + i * 1.57; hudText(c, '★', V.x + Math.cos(a) * 30, -240 + Math.sin(a) * 8, 14, 'center', '#ffe14f'); }
   }
   else if (BS.stage === 3) drawGiga(c, time);
@@ -2542,7 +2531,7 @@ function drawBoss(time) {
         c.globalAlpha = .95; c.fillStyle = '#f7efdc'; c.font = `bold ${i ? 15 : 18}px Georgia,serif`; c.textAlign = 'center'; c.fillText(lab, bxx, H - r - 3); c.globalAlpha = 1; });
       if (BS.t < 8) { c.strokeStyle = 'rgba(255,255,255,.18)'; c.setLineDash([6, 8]); c.lineWidth = 2; c.beginPath(); c.moveTo(W * .6, 90); c.lineTo(W * .6, H - 10); c.stroke(); c.setLineDash([]); }
     }
-    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Spring over de Vespa en de schokgolven · blijf staan bij HOP! · gooi als ze stilstaat' : 'Spring over lage stralen, ringen en vaten · blijf laag bij hoge stralen · gooi in haar mond', BS.hint);
+    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Lees de Vespa goed: niet alles moet je overspringen · gooi als ze stilstaat' : 'Kijk waar de straal oplaadt · gooi in haar mond als die opengaat', BS.hint);
   }
   if (BS.splat > 0) { c.globalAlpha = Math.min(1, BS.splat) * .85;
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#f3e3c3' : '#5a3219'; c.beginPath(); c.ellipse(rnd(i + 3) * W, rnd(i + 40) * H * .8 + (1.8 - BS.splat) * 30, 40 + rnd(i) * 50, 30 + rnd(i + 9) * 40, rnd(i) * 3, 0, Math.PI * 2); c.fill(); }
