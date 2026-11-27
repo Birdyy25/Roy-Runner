@@ -1911,7 +1911,7 @@ function drawHint(c, txt, alpha) {
 
 // ================= Facecam bij Rodina: alleen zichtbaar in de replay, nooit tijdens het spelen =================
 const FC = {stream: null, video: null, cv: null, ctx: null, frames: [], on: false, cache: {}, tok: 0};
-const FC_EVERY = 12, FC_SIZE = 56, FC_MAX = 1400000;   // elke 12 rekenstappen een beeldje (10 per seconde), 56 bij 56 pixels
+const FC_EVERY = 24, FC_SIZE = 48, FC_MAX = 1400000;   // reserve: 5 kleine beeldjes per seconde, naast de echte video   // elke 12 rekenstappen een beeldje (10 per seconde), 56 bij 56 pixels
 function fcStart() {
   fcStop(); FC.frames = []; const tok = ++FC.tok;
   if (!save.facecam || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
@@ -1941,6 +1941,8 @@ function fcStartVideo() {   // camerabeeld vierkant en gespiegeld op een klein c
     rec.onstop = () => {
       const seed = FCV.seed, map = FCV.map.slice(), mm = FCV.mime, blob = new Blob(FCV.chunks, {type: mm}), fr = new FileReader();
       fr.onload = () => { const b64 = String(fr.result).split(',')[1] || ''; if (!b64) return; FCV.ready = {s: seed, m: mm, f: b64, map};
+        const fr2 = Array.from(FC.frames, x => x || ''); let tot = b64.length + fr2.reduce((a, x) => a + x.length + 1, 0); for (let i = 0; i < fr2.length && tot > FC_MAX; i++) { tot -= fr2[i].length; fr2[i] = ''; }
+        FCV.ready.fr = fr2.join('|'); FCV.ready.e = FC_EVERY;
         if (FCV.pend === seed) { FCV.pend = null; fcStoreVideo(FCV.ready); }
         if (lastFight && lastFight.s === seed) lastFight.fcVideo = FCV.ready; };
       fr.readAsDataURL(blob);
@@ -1951,12 +1953,13 @@ function fcStartVideo() {   // camerabeeld vierkant en gespiegeld op een klein c
 }
 function fcStoreVideo(d) {   // nieuw record: video bewaren (online als hij binnen de grens past, en lokaal als dat lukt)
   try { localStorage.setItem('roy_facecam', JSON.stringify(d)); } catch (e) { try { localStorage.removeItem('roy_facecam'); } catch (e2) {} }
-  if (d.f.length < FC_MAX) netFetch(`${DB_URL}/facecam/${myId()}.json`, {method: 'PUT', body: JSON.stringify(d)}).catch(() => {});
+  if (d.f.length + (d.fr || '').length < FC_MAX * 1.05) netFetch(`${DB_URL}/facecam/${myId()}.json`, {method: 'PUT', body: JSON.stringify(d)}).catch(() => {});
   if (save.rodinaBest && save.rodinaBest.s === d.s) { save.rodinaBest.fc = 1; persist(); pushBest('rodina'); }
 }
 function fcStop() { FC.tok++; cancelAnimationFrame(FCV.raf); if (FCV.rec) { try { if (FCV.rec.state !== 'inactive') FCV.rec.stop(); } catch (e) {} FCV.rec = null; } if (FC.stream) FC.stream.getTracks().forEach(t => t.stop()); FC.stream = null; FC.on = false; if (FC.video) FC.video.srcObject = null; }
 function fcCapture(step) {   // beeldje k hoort bij rekenstap k*FC_EVERY, zo loopt het precies gelijk met de replay
-  if (FCV.rec) { if (step % 60 === 0) FCV.map.push([step, (performance.now() - FCV.t0) / 1000]); return; }
+  if (FCV.rec && step % 60 === 0) FCV.map.push([step, (performance.now() - FCV.t0) / 1000]);
+  if (step % FC_EVERY) return;
   const k = step / FC_EVERY, v = FC.video;
   if (!FC.on || !v || v.readyState < 2 || !v.videoWidth) { FC.frames[k] = FC.frames[k] || ''; return; }
   try {
@@ -1981,37 +1984,52 @@ function fcDelete() {   // facecam uit: ook je opgeslagen gezicht weghalen
   if (save.rodinaBest && save.rodinaBest.fc) { delete save.rodinaBest.fc; persist(); pushBest('rodina'); }
 }
 function fcLoadFor(rec) {   // bij het starten van een replay de bijbehorende facecam ophalen
-  if (rec.fcVideo) { if (BS && BS.replay) fcAttachVideo(rec.fcVideo); return; }
+  if (rec.fcVideo) { if (BS && BS.replay) { if (rec.fcVideo.fr) { BS.replay.fc = rec.fcVideo.fr.split('|'); BS.replay.fcE = rec.fcVideo.e || FC_EVERY; FC.cache = {}; } fcAttachVideo(rec.fcVideo); } return; }
   if (rec.fcFrames) { if (BS && BS.replay) { BS.replay.fc = rec.fcFrames; BS.replay.fcE = FC_EVERY; FC.cache = {}; } return; }
-  const use = d => { if (d && d.s === rec.s && d.m && typeof d.f === 'string' && BS && BS.replay) return fcAttachVideo(d);
+  const use = d => { if (d && d.s === rec.s && d.fr && BS && BS.replay) { BS.replay.fc = d.fr.split('|'); BS.replay.fcE = d.e || FC_EVERY; FC.cache = {}; }
+    if (d && d.s === rec.s && d.m && typeof d.f === 'string' && BS && BS.replay) return fcAttachVideo(d);
     if (d && d.s === rec.s && typeof d.f === 'string' && BS && BS.replay) { BS.replay.fc = d.f.split('|'); BS.replay.fcE = d.e || FC_EVERY; FC.cache = {}; } };
-  if (rec.local) { try { use(JSON.parse(localStorage.getItem('roy_facecam') || 'null')); } catch (e) {} return; }
-  if (rec.id && rec.fc) netFetch(`${DB_URL}/facecam/${rec.id}.json`).then(use).catch(() => {});
+  if (BS && BS.replay && rec.fc) BS.replay.fcWait = 1;   // laat zien dat er een facecam geladen wordt
+  if (rec.local) { let d = null; try { d = JSON.parse(localStorage.getItem('roy_facecam') || 'null'); } catch (e) {} if (d && d.s === rec.s) return use(d); }
+  const id = rec.local ? myId() : rec.id;
+  if (id && (rec.fc || rec.local)) netFetch(`${DB_URL}/facecam/${id}.json`).then(d => { use(d); if (BS && BS.replay && !BS.replay.vid && !BS.replay.fc) BS.replay.fcWait = 2; }).catch(() => { if (BS && BS.replay) BS.replay.fcWait = 2; });
 }
 function fcAttachVideo(d) {
   try { const bin = atob(d.f), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.setAttribute('playsinline', ''); el.preload = 'auto';
+    const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.setAttribute('playsinline', ''); el.setAttribute('muted', ''); el.preload = 'auto';
+    el.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1'; document.body.appendChild(el);   // Safari speelt video soms alleen af als hij op de pagina staat
+    el.onerror = () => { if (BS && BS.replay && BS.replay.vid) BS.replay.vid.bad = true; };
     el.src = URL.createObjectURL(new Blob([u], {type: d.m})); el.load();
-    BS.replay.vid = {el, map: d.map || [[0, 0]]};
+    BS.replay.vid = {el, map: d.map || [[0, 0]], t0: performance.now()};
   } catch (e) {}
 }
 function fcVideoTime(map, step) { let i = 0; while (i + 1 < map.length && map[i + 1][0] <= step) i++; return map[i][1] + (step - map[i][0]) / 120; }
 function drawFacecam(c) {   // rond bubbeltje linksonder, alleen in de replay
   const R = BS && BS.replay; if (!R) return;
+  if (R.vid && (R.vid.bad || (R.vid.el.readyState < 2 && performance.now() - R.vid.t0 > 3000 && R.fc))) { try { R.vid.el.pause(); R.vid.el.remove(); } catch (e) {} R.vid = null; }   // video werkt niet op dit toestel: reserve-beeldjes
+  if (!R.vid && !R.fc && R.fcWait) {   // nog aan het laden, of niet gelukt
+    const r = 54, x = 72, y = H - 76; c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 2; c.stroke();
+    hudText(c, R.fcWait === 1 ? 'facecam laden…' : 'geen facecam', x, y + 4, 11, 'center', '#fff'); return;
+  }
   if (R.vid) {   // echte video, gelijk gehouden met de replay
     const V2 = R.vid, el = V2.el; if (BS.step < V2.map[0][0]) return;
     const vt = fcVideoTime(V2.map, BS.step);
     const after = (state === 'win' || state === 'dead') && deadTimer < 4.6, vt2 = after ? vt + deadTimer : vt;
-    if (state === 'play' || after) { if (el.readyState >= 2 && Math.abs(el.currentTime - vt2) > .3) { try { el.currentTime = vt2; } catch (e) {} } if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
-    if (el.readyState < 2) return;
+    if (state === 'play' || after) {   // één keer naar het juiste moment, daarna gewoon laten doorspelen; alleen bijsturen als hij echt uit de pas loopt
+      const now = performance.now();
+      if (el.readyState >= 1 && !el.seeking && (!V2.synced || (Math.abs(el.currentTime - vt2) > 1 && now - (V2.lastSeek || 0) > 3000))) { try { el.currentTime = vt2; V2.synced = true; V2.lastSeek = now; } catch (e) {} }
+      if (el.paused) el.play().catch(() => {});
+    } else if (!el.paused) el.pause();
+    if (el.readyState < 2 || el.seeking) { if (!R.fc) return; } else {
     const r = 54, x = 72, y = H - 76;
     c.save(); c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.arc(x + 3, y + 4, r + 4, 0, 7); c.fill(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip(); c.drawImage(el, x - r, y - r, r * 2, r * 2); c.restore();
     c.strokeStyle = '#fff'; c.lineWidth = 3.5; c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
     c.fillStyle = '#b0222b'; rr(c, x - 40, y + r - 8, 80, 18, 9); c.fill(); hudText(c, '● ' + R.name.slice(0, 10), x, y + r + 5, 11, 'center', '#fff');
-    return;
+    return; }
   }
   if (!R.fc) return;
-  let k = Math.min(R.fc.length - 1, Math.floor(BS.step / R.fcE)); while (k > 0 && !R.fc[k]) k--;
+  const extra = (state === 'win' || state === 'dead') ? Math.floor(Math.min(deadTimer, 4.5) * 120) : 0;
+  let k = Math.min(R.fc.length - 1, Math.floor((BS.step + extra) / R.fcE)); while (k > 0 && !R.fc[k]) k--;
   if (!R.fc[k]) return;
   let im = FC.cache[k]; if (!im) { im = FC.cache[k] = new Image(); im.src = 'data:image/jpeg;base64,' + R.fc[k]; }
   const r = 54, x = 72, y = H - 76;
@@ -2058,7 +2076,8 @@ const BPU = {
 };
 const PU_Y = -165;
 function bossPickType() {
-  const L = ['espresso', 'espresso', 'glizzy', 'glizzy', 'curry', 'mega', 'mega', 'ijs', 'ijs'];
+  const L = ['espresso', 'espresso', 'glizzy', 'glizzy', 'curry', 'mega', 'mega'];
+  if (BS.ijsStage !== BS.stage && BS.rng() < .45) L.push('ijs');   // ijsje zeldzaam: hooguit één per fase
   if (BS.lives < 3) L.push('hart', 'hart', 'hart');
   return L[Math.floor(BS.rng() * L.length)];
 }
@@ -2077,7 +2096,7 @@ function bossPowerTick(dt) {
       burst(px, groundY + PU_Y, 18, ['#ffe14f', '#fff', '#9fe08a'], 320);
       if (T2 === 'espresso') F.espresso = BPU.espresso.dur;
       else if (T2 === 'curry') { F.curry = BPU.curry.dur; flash = .6; }
-      else if (T2 === 'ijs') { F.ijs = BPU.ijs.dur; tone(2000, 600, .5, 'sine', .06);   // alles wat onderweg is spat in ijsscherven uiteen
+      else if (T2 === 'ijs') { F.ijs = BPU.ijs.dur; BS.ijsStage = BS.stage; tone(2000, 600, .5, 'sine', .06);   // alles wat onderweg is spat in ijsscherven uiteen
         for (const q of BS.proj.concat(BS.hz.filter(z => z.harm || z.type === 'bomb'))) burst(q.x, groundY + (q.y || -20), 8, ['#c8f0ff', '#ffffff', '#8ad8ff'], 260);
         BS.proj = []; BS.hz = BS.hz.filter(z => !z.harm && z.type !== 'bomb'); BS.clouds = []; }
       else if (T2 === 'mega') F.mega = 3;
@@ -2212,7 +2231,7 @@ function bossStep(dt) {
   const ry1 = BS.py - 92, ry2 = BS.py - 2;
   for (const z of BS.hz) {
     const zs = 1; z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt * zs;
-    if (z.vy !== undefined) { z.vy += (z.g || 0) * dt * zs; z.y += z.vy * dt * zs; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } }
+    if (z.vy !== undefined) { z.vy += (z.g || 0) * dt * zs; z.y += z.vy * dt * zs; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } if (z.bounce && z.y >= 0) { z.y = 0; z.vy = -z.bounce; } }
     if (z.rot !== undefined) z.rot += (z.vr || 0) * dt;
     if (z.life !== undefined) { z.life -= dt; if (z.life <= 0) { z.dead = true; continue; } }
     if (!z.harm) { if (z.x < -200 || z.x > W + 260) z.dead = true; continue; }
@@ -2320,42 +2339,69 @@ function bossStage2(dt) {
   else if (V.mode === 'dizzy') { if (V.t > 2.6) { V.mode = 'park'; V.t = 0; V.shots = 0; } }
   BS.cyc = V.mode === 'dizzy' ? 'stun' : 'rest';
 }
-// ---------- fase 3: Giga-Rodina in de wijnkelder (eindvorm zoals in Cuphead)
 const RAMP_L = 70, RAMP_H = 34;   // schans: plank van 70 breed, 34 hoog aan de kant van Roy
-const G_ATT = [['lowbolt', 'rings'], ['highbolt', 'barrels'], ['combo', 'rings'], ['combo', 'barrels'], ['rings', 'highbolt']];
+// ---------- fase 3: Giga-Rodina in de wijnkelder (eindvorm zoals in Cuphead)
+const G_ATT = [['bolts', 'barrels'], ['hands', 'rings'], ['bolts', 'hands'], ['barrels', 'rings'], ['hands', 'barrels']];
+const G_RAGE = [['minis', 'bolts'], ['hands', 'minis'], ['bolts', 'barrels', 'hands'], ['rings', 'minis'], ['barrels', 'bolts']];
 function bossStage3(dt) {
-  const G = BS.g, px = W * .2, rage = BS.hp < BS.hpMax * .35, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt;
-  G.t += dtR; G.rise = Math.max(0, G.rise - dt * .9); G.shake = Math.max(0, G.shake - dt);
+  const G = BS.g, px = W * .2, rage = !!G.rage2, fz = BS.fx.ijs > 0, dtR = fz ? 0 : dt, sp = rage ? 1.15 : 1;
+  G.t += dtR; G.rise = Math.max(0, G.rise - dt * .9); G.shake = Math.max(0, G.shake - dt); G.roarK = Math.max(0, (G.roarK || 0) - dt);
   G.mouth += ((G.mode === 'open' ? 1 : 0) - G.mouth) * Math.min(1, dt * 6);
-  G.eye += ((G.mode === 'tell' ? 1 : 0) - G.eye) * Math.min(1, dt * 7);
+  G.eye += ((G.mode === 'tell' || G.mode === 'roar' ? 1 : rage ? .35 : 0) - G.eye) * Math.min(1, dt * 7);
   for (const q of BS.clouds) { q.life -= dt; q.y += q.vy * dt; q.r += 16 * dt; } BS.clouds = BS.clouds.filter(q => q.life > 0);
-  const mouthX = G.x - 30, eyeY = G.y - 30;
+  const mouthX = G.x - 30;
+  // woede bij de helft: brullen, barsten, alles sneller
+  if (!G.rage2 && BS.hp < BS.hpMax * .5 && G.mode !== 'rise') { G.rage2 = true; G.mode = 'roar'; G.t = 0; G.hands = []; G.roarK = 1.8; shake = 22; flash = .9; tone(90, 40, 1.6, 'sawtooth', .16); tone(140, 70, 1.4, 'square', .08); return; }
+  if (G.mode === 'roar') { if (G.t > 1.8) { G.mode = 'idle'; G.t = 0; G.q = []; } return; }
+  // reuzenhanden: zweven boven de vloer, slaan neer, schokgolf naar Roy
+  for (const h of G.hands || []) {
+    h.t += dtR;
+    if (!h.hit && h.t >= h.at) { h.hit = true; shake = 9; tone(70, 35, .35, 'sawtooth', .16); burst(h.x, groundY - 6, 16, ['#5a4a40', '#8a7a6a', '#2a2220'], 320);
+      BS.hz.push({type: 'wave', x: h.x - 50, y: 0, vx: -520 * sp, w: 34, h: 40, harm: true, life: 2.2}); BS.hz.push({type: 'wave', x: h.x + 50, y: 0, vx: 520 * sp, w: 34, h: 40, harm: false, life: 1.2}); }
+  }
+  if (G.hands) G.hands = G.hands.filter(h => h.t < h.at + 1);
+  // mini-Rodina's: vliegen in, stoppen en flitsen, duiken voor Roy op de vloer en schuiven naar hem toe
+  for (const m of BS.hz) if (m.type === 'mini') {
+    m.mt = (m.mt || 0) + dtR;
+    if (m.st === 'fly') { m.x -= 240 * sp * dtR; m.y = m.y0 + Math.sin(m.mt * 5) * 14; if (m.x < m.stopX) { m.st = 'tell'; m.mt = 0; } }
+    else if (m.st === 'tell') { if (m.mt > .38) { m.st = 'dive'; m.mt = 0; m.sx = m.x; m.sy = m.y; } }
+    else if (m.st === 'dive') { const k = Math.min(1, m.mt / .3); m.x = m.sx + (px + 140 - m.sx) * k; m.y = m.sy * (1 - k); if (k >= 1) { m.st = 'skid'; m.y = 0; m.vx = -470 * sp; m.harm = true; tone(160, 90, .15, 'square', .06); } }
+  }
   if (G.mode === 'rise') { if (G.t > 1.4) { G.mode = 'idle'; G.t = 0; } return; }
-  if (G.mode === 'idle') { if (G.t > (rage ? .35 : .65)) { if (!G.q.length) G.q = G_ATT[Math.floor(BS.rng() * G_ATT.length)].slice(); G.cur = G.q.shift(); G.mode = 'tell'; G.t = 0; G.k = 0; } return; }
-  if (G.mode === 'tell') {   // ogen gloeien op: wat komt er?
+  if (G.mode === 'idle') { if (G.t > (rage ? .35 : .6)) { const L = rage ? G_RAGE : G_ATT; if (!G.q.length) G.q = L[Math.floor(BS.rng() * L.length)].slice(); G.cur = G.q.shift();
+      if (G.cur === 'bolts') { const r = BS.rng(); G.cur = r < .34 ? 'lowbolt' : r < .67 ? 'highbolt' : 'combo'; }
+      G.mode = 'tell'; G.t = 0; G.k = 0; } return; }
+  if (G.mode === 'tell') {   // vooraankondiging: bol op de hoogte van de straal, rook uit de mond, trillen, handen omhoog
     if (G.cur === 'rings' && Math.random() < dt * 14) BS.clouds.push({x: G.x - 30 + (Math.random() - .5) * 30, y: G.y + 70, r: 10 + Math.random() * 10, vy: -40, life: .8, max: .8});
     if (G.cur === 'barrels') G.shake = .1;
-    if (G.t > (rage ? .75 : .95)) { G.mode = 'fire'; G.t = 0; G.k = 0; }
+    if (G.t > (G.cur === 'hands' || G.cur === 'minis' ? .25 : rage ? .75 : .95)) { G.mode = 'fire'; G.t = 0; G.k = 0;
+      if (G.cur === 'hands') G.hands = [{x: px + 250, t: 0, at: .8 / sp}, {x: px + 185, t: -1 / sp, at: .8 / sp}].concat(rage ? [{x: px + 230, t: -2 / sp, at: .7 / sp}] : []); }
     return;
   }
   if (G.mode === 'fire') {
-    const c2 = G.cur, sp = rage ? 1.15 : 1;
-    if (c2 === 'combo') {   // laag, dan meteen hoog: spring over de eerste en wees weer beneden voor de tweede
+    const c2 = G.cur;
+    if (c2 === 'combo') {   // laag, dan meteen hoog
       if (G.k === 0) { G.k = 1; BS.hz.push({type: 'bolt', hi: false, x: G.x - 80, y: -6, vx: -1020 * sp, w: 200, h: 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
       if (G.k === 1 && G.t > (rage ? .55 : .62)) { G.k = 2; BS.hz.push({type: 'bolt', hi: true, x: G.x - 80, y: -108, vx: -1020 * sp, w: 200, h: 38, harm: true}); tone(1800, 400, .35, 'sawtooth', .07); G.shake = .2; }
       if (G.t > 1.2) { G.mode = 'idle'; G.t = 0; G.n++; }
-    } else if (c2 === 'lowbolt' || c2 === 'highbolt') {   // lange straal over de vloer of op hoofdhoogte
+    } else if (c2 === 'lowbolt' || c2 === 'highbolt') {
       const cnt = rage ? 2 : 1;
       if (G.k < cnt && G.t > G.k * .75) { G.k++; const hi = c2 === 'highbolt'; BS.hz.push({type: 'bolt', hi, x: G.x - 80, y: hi ? -108 : -6, vx: -1020 * sp, w: 220, h: hi ? 38 : 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
       if (G.t > cnt * .75 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
-    } else if (c2 === 'rings') {   // vape-ringen rollen over de vloer
+    } else if (c2 === 'rings') {
       const cnt = rage ? 4 : 3;
       if (G.k < cnt && G.t > G.k * .62) { G.k++; BS.hz.push({type: 'ring', x: mouthX, y: 0, vx: -(500 + BS.rng() * 90) * sp, w: 38, h: 42, rot: 0, vr: -6, harm: true}); for (let i = 0; i < 4; i++) BS.clouds.push({x: mouthX, y: -60 - Math.random() * 40, r: 14 + Math.random() * 10, vy: -30, life: 1, max: 1}); tone(300, 200, .2, 'triangle', .06); }
       if (G.t > cnt * .62 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
-    } else if (c2 === 'barrels') {   // wijnvaten rollen uit het donker
+    } else if (c2 === 'barrels') {   // stuiterende vaten: sommige springen over je heen, andere rollen laag
       const cnt = rage ? 3 : 2;
-      if (G.k < cnt && G.t > G.k * .9) { G.k++; BS.hz.push({type: 'barrel', x: W + 40, y: 0, vx: -440 * sp, w: 44, h: 48, rot: 0, vr: -8, harm: true}); tone(120, 80, .3, 'sine', .1); }
-      if (G.t > cnt * .9 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
+      if (G.k < cnt && G.t > G.k * 1.05) { G.k++; const hb = 55 + BS.rng() * 185, v0 = Math.sqrt(2 * 1500 * hb); BS.hz.push({type: 'barrel', x: W + 40, y: 0, vx: -400 * sp, vy: -v0, g: 1500, bounce: v0, w: 44, h: 48, rot: 0, vr: -8, harm: true}); tone(120, 80, .3, 'sine', .1); }
+      if (G.t > cnt * 1.05 + .5) { G.mode = 'idle'; G.t = 0; G.n++; }
+    } else if (c2 === 'hands') {
+      if (!G.hands.length) { G.mode = 'idle'; G.t = 0; G.n++; }
+    } else if (c2 === 'minis') {
+      const cnt = 3;
+      if (G.k < cnt && G.t > G.k * .7) { BS.hz.push({type: 'mini', st: 'fly', x: W + 30, y0: -150 - G.k * 22, y: -150, vx: 0, w: 34, h: 34, harm: false, stopX: px + 300 + G.k * 50}); G.k++; tone(900, 1200, .1, 'triangle', .05); }
+      if (G.k >= cnt && !BS.hz.some(z => z.type === 'mini' && z.st !== 'skid')) { G.mode = 'idle'; G.t = 0; G.n++; }
     }
     if (G.mode === 'idle' && G.n % 2 === 0) { G.mode = 'open'; G.t = 0; tone(200, 120, .8, 'sawtooth', .06); }   // na twee aanvallen: mond open
     return;
@@ -2480,7 +2526,8 @@ function drawVespa(c, x, y, wheelie, time, moving, springs) {
 }
 function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
   const G = BS.g, dead = state === 'win', rise = G.rise * G.rise * 260, jx = (G.shake > 0 || BS.hurt > 0 ? (Math.random() - .5) * 10 : 0), bob = Math.sin(time / 380) * 8;
-  const cx = G.x + jx, cy = G.y + rise + bob + (dead ? Math.min(300, deadTimer * 160) : 0), hh = 300, hw = hh * ROD_ASPECT;
+  const rg = G.rage2 ? 1.1 + (G.roarK || 0) * .05 : 1, rj = (G.roarK || 0) > 0 ? (Math.random() - .5) * 18 : 0;
+  const cx = G.x + jx + rj, cy = G.y + rise + bob + (dead ? Math.min(300, deadTimer * 160) : 0) - (rg - 1) * 60, hh = 300 * rg, hw = hh * ROD_ASPECT;
   // schaduwlijf
   c.fillStyle = '#0c0a0e'; c.beginPath(); c.ellipse(cx + 10, cy + 150, 170, 110, 0, Math.PI, 0); c.fill();
   c.fillStyle = '#16141a'; c.beginPath(); c.ellipse(cx + 10, cy + 170, 140, 80, 0, Math.PI, 0); c.fill();
@@ -2490,11 +2537,15 @@ function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
   const img = dead ? ok(rodinaX) || ok(rodina) : G.mouth > .5 ? ok(typeof rodRage !== 'undefined' && rodRage) || ok(rodinaA) || ok(rodina) : G.mode === 'tell' || G.mode === 'fire' ? ok(rodinaA) || ok(rodina) : (BS.hurt > 0 && ok(typeof rodHurtA !== 'undefined' && rodHurtA)) || ok(rodina);
   c.save(); c.translate(cx, cy); c.rotate(Math.sin(time / 900) * .05 - (G.mode === 'fire' ? .06 : 0));
   if (img && img.complete && img.naturalWidth) c.drawImage(img, -hw / 2, -hh / 2, hw, hh);
+  if (G.rage2) {   // barsten en rode gloed in haar woede
+    c.strokeStyle = 'rgba(30,8,4,.75)'; c.lineWidth = 3; c.lineCap = 'round';
+    for (const [a, b2, l] of [[-.32, -.38, 70], [.18, -.42, 60], [-.05, .3, 50], [.3, .1, 45]]) { c.beginPath(); let x1 = hw * a, y1 = hh * b2; c.moveTo(x1, y1); for (let k = 0; k < 4; k++) { x1 += (k % 2 ? 9 : -7); y1 += l / 4; c.lineTo(x1, y1); } c.stroke(); }
+    c.fillStyle = `rgba(255,30,10,${.12 + .08 * Math.sin(time / 120)})`; c.globalCompositeOperation = 'lighter'; c.fillRect(-hw / 2, -hh / 2, hw, hh); c.globalCompositeOperation = 'source-over';
+  }
   if (G.eye > .05) { c.fillStyle = `rgba(255,40,20,${G.eye * .55})`; c.globalCompositeOperation = 'lighter'; c.beginPath(); c.ellipse(-hw * .12, -hh * .05, 26, 16, 0, 0, 7); c.ellipse(hw * .16, -hh * .05, 26, 16, 0, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over'; }
   c.restore();
   if (G.mouth > .5 && !dead) {   // zwak punt
     const pr = 30 + Math.sin(time / 90) * 5; c.strokeStyle = 'rgba(255,225,79,.9)'; c.lineWidth = 4; c.beginPath(); c.arc(cx - 30, cy + 60, pr, 0, 7); c.stroke();
-    hudText(c, 'NU! ×3', cx - 30, cy + 118, 22, 'center', '#ffe14f');
   }
   // de straal laadt eerst op als gloeiende bol, precies op de hoogte waar hij straks langs komt (geen uitleg: lees het zelf)
   if (G.mode === 'tell' && G.cur && G.cur !== 'rings' && G.cur !== 'barrels') {
@@ -2503,6 +2554,24 @@ function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
       for (let i = 0; i < 5; i++) { const an = time / 90 + i * 1.25, d = r * 2.6 * (1 - k2 * .6); c.fillStyle = `rgba(255,140,90,${a * .8})`; c.beginPath(); c.arc(ox + Math.cos(an) * d, y + Math.sin(an) * d, 2, 0, 7); c.fill(); } };
     if (G.cur === 'lowbolt' || G.cur === 'combo') orb(-19, 1);
     if (G.cur === 'highbolt' || G.cur === 'combo') orb(-127, G.cur === 'combo' ? .55 : 1);
+  }
+}
+function drawGigaHands(c, time) {   // reuzenhanden met rode nagels, schaduw op de vloer
+  const G = BS.g; if (!G || !G.hands) return;
+  for (const h of G.hands) {
+    if (h.t < -.05) continue;
+    const k = Math.min(1, Math.max(0, h.t) / h.at), up = h.hit ? Math.max(0, (h.t - h.at - .35) / .6) : 0;
+    let y = h.hit ? -40 - up * up * 400 : -380 + 150 * (1 - Math.pow(1 - Math.min(1, k * 1.6), 2)) - (k > .62 ? -((k - .62) / .38) * 0 : 0);
+    if (!h.hit && k > .85) y = -230 + ((k - .85) / .15) * 190;   // neerslaan
+    const sh = h.hit ? Math.max(0, 1 - up) : k;
+    c.fillStyle = `rgba(0,0,0,${.15 + sh * .35})`; c.beginPath(); c.ellipse(h.x, 0, 30 + sh * 40, 6 + sh * 5, 0, 0, 7); c.fill();
+    c.save(); c.translate(h.x, y); const s2 = 1.15;
+    c.scale(s2, s2); c.fillStyle = '#1a1418'; c.fillRect(-26, -140, 52, 110);   // mouw
+    c.fillStyle = '#f2c9a8'; c.strokeStyle = '#8a5a40'; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(0, -14, 46, 30, 0, 0, 7); c.fill(); c.stroke();   // hand
+    for (let f = 0; f < 4; f++) { const fx = -33 + f * 22; c.fillStyle = '#f2c9a8'; c.beginPath(); c.ellipse(fx, 12, 9, 18, 0, 0, 7); c.fill(); c.stroke(); c.fillStyle = '#c41e24'; c.beginPath(); c.ellipse(fx, 24, 6, 7, 0, 0, 7); c.fill(); }
+    if (!h.hit && k > .6 && Math.floor(time / 70) % 2) { c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 3; c.beginPath(); c.ellipse(0, -10, 54, 38, 0, 0, 7); c.stroke(); }
+    c.restore();
   }
 }
 function drawStreet(camX, time) {   // nachtelijke Sardijnse straat met huizen, lampjes en de maan
@@ -2553,7 +2622,9 @@ function drawBoss(time) {
     c.restore();
     if (V.mode === 'dizzy') for (let i = 0; i < 4; i++) { const a = time / 180 + i * 1.57; hudText(c, '★', V.x + Math.cos(a) * 30, -240 + Math.sin(a) * 8, 14, 'center', '#ffe14f'); }
   }
-  else if (BS.stage === 3) drawGiga(c, time);
+  else if (BS.stage === 3) { drawGiga(c, time); drawGigaHands(c, time);
+    if (BS.g.rage2 && state === 'play' && Math.random() < .25) particles.push({x: Math.random() * W, y: -10, vx: (Math.random() - .5) * 40, vy: 60, g: 900, life: 1.2, size: 3 + Math.random() * 4, col: ['#5a4a40', '#8a7a6a', '#3a3028'][Math.floor(Math.random() * 3)]});   // de kelder stort in
+  }
   if (BS.fx.ijs > 0 && BS.trans <= 0) {   // ijsblok om Rodina
     const a = Math.min(1, BS.fx.ijs * 2) * .55, ix = tx, iw = BS.stage === 3 ? 260 : 144, ih = BS.stage === 3 ? 380 : 270;
     c.fillStyle = `rgba(170,225,255,${a})`; rr(c, ix - iw / 2, -ih, iw, ih, 16); c.fill(); c.strokeStyle = `rgba(255,255,255,${a + .2})`; c.lineWidth = 3; c.stroke();
@@ -2566,7 +2637,11 @@ function drawBoss(time) {
     else if (z.type === 'bolt') { const y0 = z.y - z.h; const g2 = c.createLinearGradient(z.x - z.w / 2, 0, z.x + z.w / 2, 0); g2.addColorStop(0, 'rgba(255,255,255,.95)'); g2.addColorStop(.3, 'rgba(255,60,40,.9)'); g2.addColorStop(1, 'rgba(255,60,40,0)');
       c.fillStyle = g2; rr(c, z.x - z.w / 2, y0, z.w, z.h, z.h / 2); c.fill(); c.fillStyle = 'rgba(255,255,255,.8)'; rr(c, z.x - z.w / 2, y0 + z.h * .35, z.w * .6, z.h * .3, 4); c.fill(); }
     else if (z.type === 'ring') { c.save(); c.translate(z.x, -20); c.rotate(z.rot); c.strokeStyle = 'rgba(230,235,255,.9)'; c.lineWidth = 7; c.beginPath(); c.arc(0, 0, 16, 0, 7); c.stroke(); c.strokeStyle = 'rgba(180,120,255,.6)'; c.lineWidth = 3; c.stroke(); c.restore(); }
-    else if (z.type === 'barrel') { c.save(); c.translate(z.x, -24); c.rotate(z.rot); const g3 = c.createRadialGradient(-6, -6, 3, 0, 0, 26); g3.addColorStop(0, '#d8a060'); g3.addColorStop(1, '#6a3a18'); c.fillStyle = g3; c.beginPath(); c.arc(0, 0, 24, 0, 7); c.fill(); c.strokeStyle = '#120a05'; c.lineWidth = 3; c.stroke(); c.strokeStyle = '#c8ccd4'; c.beginPath(); c.arc(0, 0, 17, 0, 7); c.stroke(); c.restore(); }
+    else if (z.type === 'mini') { const ok2 = rodina && rodina.complete && rodina.naturalWidth; c.save(); c.translate(z.x, z.y - 22); c.rotate(z.st === 'skid' ? Math.sin(time / 50) * .3 : z.st === 'dive' ? -.6 : Math.sin(time / 150) * .15);
+      for (const sx of [-1, 1]) { c.fillStyle = '#2a1a2a'; c.beginPath(); c.moveTo(sx * 10, -4); c.quadraticCurveTo(sx * 34, -26 + Math.sin(time / 60) * 8, sx * 30, 4); c.closePath(); c.fill(); }
+      if (ok2) c.drawImage(rodina, -20, -24, 40, 40 / ROD_ASPECT); if (z.st === 'tell' && Math.floor(time / 60) % 2) { c.globalCompositeOperation = 'lighter'; c.fillStyle = 'rgba(255,255,255,.6)'; c.beginPath(); c.arc(0, 0, 24, 0, 7); c.fill(); c.globalCompositeOperation = 'source-over'; }
+      c.restore(); }
+    else if (z.type === 'barrel') { c.save(); c.translate(z.x, z.y - 24); c.rotate(z.rot); const g3 = c.createRadialGradient(-6, -6, 3, 0, 0, 26); g3.addColorStop(0, '#d8a060'); g3.addColorStop(1, '#6a3a18'); c.fillStyle = g3; c.beginPath(); c.arc(0, 0, 24, 0, 7); c.fill(); c.strokeStyle = '#120a05'; c.lineWidth = 3; c.stroke(); c.strokeStyle = '#c8ccd4'; c.beginPath(); c.arc(0, 0, 17, 0, 7); c.stroke(); c.restore(); }
   }
   for (const s of BS.shots) { if (s.hot) { c.fillStyle = 'rgba(255,150,40,.45)'; c.beginPath(); c.arc(s.x, s.y, s.mega ? 30 : 20, 0, 7); c.fill(); } drawWorst(c, s.x, s.y, s.rot, s.mega ? 44 : 24); }
   drawBossPU(c, time);
@@ -2613,7 +2688,7 @@ function drawBoss(time) {
         c.globalAlpha = .95; c.fillStyle = '#f7efdc'; c.font = `bold ${i ? 15 : 18}px Georgia,serif`; c.textAlign = 'center'; c.fillText(lab, bxx, H - r - 3); c.globalAlpha = 1; });
       if (BS.t < 8) { c.strokeStyle = 'rgba(255,255,255,.18)'; c.setLineDash([6, 8]); c.lineWidth = 2; c.beginPath(); c.moveTo(W * .6, 90); c.lineTo(W * .6, H - 10); c.stroke(); c.setLineDash([]); }
     }
-    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Let op wat ze op straat legt · gooi als ze stilstaat' : 'Kijk waar de straal oplaadt · gooi in haar mond als die opengaat', BS.hint);
+    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Let op wat ze op straat legt · gooi als ze stilstaat' : 'Lees haar bewegingen · gooi in haar mond als die opengaat', BS.hint);
   }
   if (BS.splat > 0) { c.globalAlpha = Math.min(1, BS.splat) * .85;
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#f3e3c3' : '#5a3219'; c.beginPath(); c.ellipse(rnd(i + 3) * W, rnd(i + 40) * H * .8 + (1.8 - BS.splat) * 30, 40 + rnd(i) * 50, 30 + rnd(i + 9) * 40, rnd(i) * 3, 0, Math.PI * 2); c.fill(); }
@@ -3427,7 +3502,7 @@ function renderModes() {
     b.onclick = () => { audio(); fn(); }; el.appendChild(b);
   });
 }
-function toMenu() { if (BS && BS.replay && BS.replay.vid) { try { BS.replay.vid.el.pause(); } catch (e) {} } fcStop(); theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
+function toMenu() { if (BS && BS.replay && BS.replay.vid) { try { BS.replay.vid.el.pause(); BS.replay.vid.el.remove(); } catch (e) {} } fcStop(); theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
 
 function renderLevels() {
   const el = $('dishes'); el.innerHTML = '';
