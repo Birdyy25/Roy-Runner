@@ -73,7 +73,7 @@
   .tabs{gap:.4em;margin:.4em 0 .2em}
   .tab{flex:1;font-family:inherit;font-size:.7em;font-weight:700;padding:.3em;border-radius:1em;border:.1em solid var(--green);background:transparent;color:var(--green);cursor:pointer}
   .tab.on{background:var(--green);color:var(--cream)}
-  .brow .rp{flex:none;border:0;border-radius:50%;width:1.7em;height:1.7em;margin-left:.2em;background:var(--red);color:#fff;font-size:.72em;line-height:1;cursor:pointer;align-self:center}
+  .brow .rp{flex:none;border:0;border-radius:1em;min-width:1.7em;padding:0 .45em;height:1.7em;margin-left:.2em;background:var(--red);color:#fff;font-size:.72em;line-height:1;cursor:pointer;align-self:center}
   .brow{display:flex;align-items:baseline;gap:.5em;font-size:.86em;padding:.16em .3em;border-bottom:.06em dashed rgba(43,26,18,.22)}
   .brow .r{width:1.6em;font-weight:700;color:var(--red)} .brow .n{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .brow .d{font-size:.8em;opacity:.6} .brow .v{font-weight:700}
   .brow.new{background:#eef6ea;border-radius:.4em}
@@ -175,12 +175,21 @@
       <div class="empty" style="margin-top:.5em">Minstens twee tekens. Je kunt je naam later aanpassen in het Klassement.</div>
     </div>
 
+    <div class="card" id="v-facecam">
+      <div class="big script">Facecam?</div>
+      <div class="tri"></div>
+      <p style="font-size:.78em;line-height:1.45;margin:.2em 0 .6em">Wil je dat de voorcamera je gezicht opneemt tijdens het Rodina-gevecht? Je ziet er zelf niets van tijdens het spelen. Haal je een nieuw record, dan zien anderen je gezicht in een rondje bij je replay in het klassement. Iedereen met de link kan dat bekijken. Je kunt het altijd uitzetten in het pauzemenu; dan wordt je opgeslagen facecam ook verwijderd.</p>
+      <button class="btn" id="fcYes">Ja, facecam aan</button>
+      <button class="btn alt" id="fcNo">Nee, zonder camera</button>
+    </div>
+
     <div class="card" id="v-pause">
       <div class="big script">Pauze</div>
       <div class="tri"></div>
       <button class="btn" id="resumeBtn">Verder spelen</button>
       <button class="btn alt" id="retryBtn">Opnieuw</button>
       <button class="btn alt" id="flipBtn" style="display:none">Kantelen omdraaien</button>
+      <button class="btn alt" id="fcBtn" style="display:none">Facecam: uit</button>
       <button class="btn alt" data-quit>Hoofdmenu</button>
     </div>
 
@@ -526,7 +535,7 @@ function bank() {
 }
 function startLevel(i) { startRun('level', i); }
 function drawTapFx(c) { for (const f of tapFx) { f.life -= 1 / 60; c.globalAlpha = Math.max(0, f.life / .3) * .7; c.strokeStyle = '#fff'; c.lineWidth = 3; c.beginPath(); c.arc(f.x, f.y, 34 - f.life * 60, 0, 7); c.stroke(); } c.globalAlpha = 1; while (tapFx.length && tapFx[0].life <= 0) tapFx.shift(); }
-function startReplay(rec) { goFullscreen(); startRun('boss'); startBoss(rec); }
+function startReplay(rec) { goFullscreen(); window.__noFc = true; startRun('boss'); window.__noFc = false; startBoss(rec); fcLoadFor(rec); }
 function startRun(m, i, seed) {
   mode = m; attempts = 0; held = false; particles = []; shake = 0; flash = 0; banner = 0;
   if (m === 'level') { buildLevel(i || 0); reset(); }
@@ -1890,6 +1899,63 @@ function drawHint(c, txt, alpha) {
   c.fillStyle = '#f7efdc'; c.textAlign = 'center'; c.fillText(txt, W / 2, H - 26); c.globalAlpha = 1;
 }
 
+// ================= Facecam bij Rodina: alleen zichtbaar in de replay, nooit tijdens het spelen =================
+const FC = {stream: null, video: null, cv: null, ctx: null, frames: [], on: false, cache: {}, tok: 0};
+const FC_EVERY = 30, FC_SIZE = 64;   // elke 30 rekenstappen een beeldje (4 per seconde), 64 bij 64 pixels
+function fcStart() {
+  fcStop(); FC.frames = []; const tok = ++FC.tok;
+  if (!save.facecam || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try {
+    navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 240}, height: {ideal: 240}}, audio: false}).then(st => {
+      if (tok !== FC.tok || mode !== 'boss' || !BS || BS.replay || state !== 'play') { st.getTracks().forEach(t => t.stop()); return; }
+      FC.stream = st;
+      const v = FC.video || (FC.video = document.createElement('video'));
+      v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.srcObject = st; v.play().catch(() => {});
+      if (!FC.cv) { FC.cv = document.createElement('canvas'); FC.cv.width = FC.cv.height = FC_SIZE; FC.ctx = FC.cv.getContext('2d'); }
+      FC.on = true;
+    }).catch(() => { FC.on = false; });
+  } catch (e) { FC.on = false; }
+}
+function fcStop() { FC.tok++; if (FC.stream) FC.stream.getTracks().forEach(t => t.stop()); FC.stream = null; FC.on = false; if (FC.video) FC.video.srcObject = null; }
+function fcCapture(step) {   // beeldje k hoort bij rekenstap k*FC_EVERY, zo loopt het precies gelijk met de replay
+  const k = step / FC_EVERY, v = FC.video;
+  if (!FC.on || !v || v.readyState < 2 || !v.videoWidth) { FC.frames[k] = FC.frames[k] || ''; return; }
+  try {
+    const sz = Math.min(v.videoWidth, v.videoHeight), c = FC.ctx;
+    c.save(); c.translate(FC_SIZE, 0); c.scale(-1, 1); c.drawImage(v, (v.videoWidth - sz) / 2, (v.videoHeight - sz) / 2, sz, sz, 0, 0, FC_SIZE, FC_SIZE); c.restore();
+    FC.frames[k] = FC.cv.toDataURL('image/jpeg', .55).slice(23);
+  } catch (e) { FC.frames[k] = ''; }
+}
+function fcHasContent(fr) { return fr && fr.some(x => x); }
+function fcSaveBest(seed) {   // nieuw record: facecam bewaren (lokaal en online)
+  const fr = Array.from(FC.frames, x => x || '');
+  if (!fcHasContent(fr)) return false;
+  const rec = {s: seed, e: FC_EVERY, f: fr.join('|')};
+  try { localStorage.setItem('roy_facecam', JSON.stringify(rec)); } catch (e) {}
+  netFetch(`${DB_URL}/facecam/${myId()}.json`, {method: 'PUT', body: JSON.stringify(rec)}).catch(() => {});
+  return true;
+}
+function fcDelete() {   // facecam uit: ook je opgeslagen gezicht weghalen
+  try { localStorage.removeItem('roy_facecam'); } catch (e) {}
+  netFetch(`${DB_URL}/facecam/${myId()}.json`, {method: 'DELETE'}).catch(() => {});
+  if (save.rodinaBest && save.rodinaBest.fc) { delete save.rodinaBest.fc; persist(); pushBest('rodina'); }
+}
+function fcLoadFor(rec) {   // bij het starten van een replay de bijbehorende facecam ophalen
+  const use = d => { if (d && d.s === rec.s && typeof d.f === 'string' && BS && BS.replay) { BS.replay.fc = d.f.split('|'); BS.replay.fcE = d.e || FC_EVERY; FC.cache = {}; } };
+  if (rec.local) { try { use(JSON.parse(localStorage.getItem('roy_facecam') || 'null')); } catch (e) {} return; }
+  if (rec.id && rec.fc) netFetch(`${DB_URL}/facecam/${rec.id}.json`).then(use).catch(() => {});
+}
+function drawFacecam(c) {   // rond bubbeltje linksonder, alleen in de replay
+  const R = BS && BS.replay; if (!R || !R.fc) return;
+  let k = Math.min(R.fc.length - 1, Math.floor(BS.step / R.fcE)); while (k > 0 && !R.fc[k]) k--;
+  if (!R.fc[k]) return;
+  let im = FC.cache[k]; if (!im) { im = FC.cache[k] = new Image(); im.src = 'data:image/jpeg;base64,' + R.fc[k]; }
+  const r = 54, x = 72, y = H - 76;
+  c.save(); c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.arc(x + 3, y + 4, r + 4, 0, 7); c.fill();
+  c.beginPath(); c.arc(x, y, r, 0, 7); c.clip(); if (im.complete && im.naturalWidth) c.drawImage(im, x - r, y - r, r * 2, r * 2); else { c.fillStyle = '#222'; c.fillRect(x - r, y - r, r * 2, r * 2); } c.restore();
+  c.strokeStyle = '#fff'; c.lineWidth = 3.5; c.beginPath(); c.arc(x, y, r, 0, 7); c.stroke();
+  c.fillStyle = '#b0222b'; rr(c, x - 40, y + r - 8, 80, 18, 9); c.fill(); hudText(c, '● ' + R.name.slice(0, 10), x, y + r + 5, 11, 'center', '#fff');
+}
 // ================= Eindbaas: Rodina, drie fases op drie plekken =================
 // Vaste rekenstap (1/120 s) en een eigen toevalsgenerator: met alleen de tikken kun je een gevecht precies naspelen (replays).
 let BS = null;
@@ -1909,12 +1975,13 @@ function decodeRep(s) { const ev = []; let num = '', st = 0; for (const ch of s 
 function startBoss(rep) {
   worstCount = 0; banked = false; clearWorld(); P = null; particles = [];
   const seed = rep ? rep.s : (Math.random() * 1e9) | 0;
-  BS = {seed, rng: mulberry(seed), replay: rep ? {ev: decodeRep(rep.r), i: 0, name: rep.n || '?'} : null, rec: [], step: 0, acc: 0, qJump: false, qThrow: false, inHold: false, jb: 0,
+  BS = {seed, rng: mulberry(seed), replay: rep ? {ev: decodeRep(rep.r), i: 0, name: rep.n || '?', fc: null, fcE: FC_EVERY} : null, rec: [], step: 0, acc: 0, qJump: false, qThrow: false, inHold: false, jb: 0,
         stage: 1, hpMax: STAGE_HP[1], hp: STAGE_HP[1], trans: 0, transTo: 0, switched: false,
         t: 0, py: 0, pvy: 0, pground: true, lives: 3, inv: 0, cd: 0, proj: [], shots: [], hz: [], cyc: 'rest', ct: 1.8, pat: null, pi: 0, pt: 0, cycles: 0, clouds: [],
         hurt: 0, wind: 0, dmg: 0, hint: rep ? 0 : 6, shown: false, lastPhase: 0, pu: null, puT: 5, fx: {espresso: 0, curry: 0, ijs: 0, mega: 0}, rain: [], puBan: 0, v: null, g: null};
   theme = THEMES[2]; themeFrom = null; themeT = 0;
   state = 'play'; deadTimer = 0;
+  if (rep || window.__noFc) fcStop(); else fcStart();
 }
 // ---- power-ups bij Rodina: vallen willekeurig boven Roy, spring ertegenaan om ze te pakken
 const BPU = {
@@ -1992,7 +2059,7 @@ function bossHurtPlayer() {
   if (BS.lives <= 1) deathQuote = pickQuote('boss');
   BS.lives--; BS.inv = 1.3; shake = 12; flash = .8; tone(260, 70, .3, 'sawtooth', .11);
   if (BS.lives <= 0) {
-    state = 'dead'; deadTimer = 0;
+    state = 'dead'; deadTimer = 0; fcStop();
     particles.push({body: 1, x: W * .2, y: groundY + BS.py, vx: -110, vy: -400, r: 0, vr: -6, life: 1.6, floor: groundY - 8});
     particles.push({head: 1, x: W * .2, y: groundY + BS.py - 90, vx: -90, vy: -560, r: 0, vr: -8, life: 1.6});
     worstCount = Math.floor(BS.dmg / 8) + (BS.stage - 1) * 15; if (!BS.replay) bank();
@@ -2010,12 +2077,12 @@ function bossDamage(d, x, y, big) {
   if (BS.hp > 0) return;
   BS.hp = 0;
   if (BS.stage < 3) { BS.trans = 3; BS.transTo = BS.stage + 1; BS.switched = false; BS.proj = []; BS.hz = []; BS.shots = []; BS.rain = []; shake = 16; flash = .9; [392, 330, 262].forEach((f, i) => tone(f, f * .7, .35, 'sawtooth', .09, i * .14)); return; }
-  state = 'win'; deadTimer = 0; BS.proj = []; BS.hz = []; BS.rain = []; shake = 18; flash = 1;
+  state = 'win'; deadTimer = 0; BS.proj = []; BS.hz = []; BS.rain = []; shake = 18; flash = 1; setTimeout(fcStop, 50);
   worstCount = Math.floor(BS.dmg / 8) + 80 + 15 * BS.lives;
   if (!BS.replay) {
     save.bossWins = (save.bossWins || 0) + 1;
     const v = Math.round(BS.t * 10) / 10;
-    if (!save.rodinaBest || v < save.rodinaBest.v) save.rodinaBest = {v, x: BS.lives, s: BS.seed, r: encodeRep(BS.rec), rv: REPLAY_VER};
+    if (!save.rodinaBest || v < save.rodinaBest.v) { save.rodinaBest = {v, x: BS.lives, s: BS.seed, r: encodeRep(BS.rec), rv: REPLAY_VER}; if (save.facecam && fcSaveBest(BS.seed)) save.rodinaBest.fc = 1; }
     addScore('rodina', v, BS.lives); bank();
   }
   [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, f, .25, 'triangle', .09, i * .12));
@@ -2052,6 +2119,7 @@ function bossStep(dt) {
   else { tap = BS.qJump; thr = BS.qThrow; BS.qJump = BS.qThrow = false; const h = held, th = throwPtrs.size > 0;
     if (tap) BS.rec.push([BS.step, 'J']); if (thr) BS.rec.push([BS.step, 'T']); if (h !== BS.inHold) { BS.inHold = h; BS.rec.push([BS.step, h ? 'H' : 'U']); }
     if (th !== !!BS.inThrow) { BS.inThrow = th; BS.rec.push([BS.step, th ? 'A' : 'B']); } }
+  if (!BS.replay && BS.step % FC_EVERY === 0) fcCapture(BS.step);
   if (tap) BS.jb = .26;   // springbuffer: ook een tik net vóór de landing telt
   if (thr || BS.inThrow) bossThrow();
   const px = W * .2;
@@ -2457,6 +2525,7 @@ function drawBoss(time) {
   if (flash > 0) { c.fillStyle = `rgba(255,240,220,${flash * .35})`; c.fillRect(-20, -20, W + 40, H + 40); }
   if (state === 'dead') { drawRoyd(c, deadTimer); drawQuote(c, W / 2, H / 2 + 26, Math.max(0, Math.min(1, (deadTimer - .25) * 4))); }
   if (state === 'win') hudText(c, 'RODINA VERSLAGEN!', W / 2, H * .4, 40, 'center', '#ffe14f');
+  drawFacecam(c);
   drawTapFx(c);
 }
 
@@ -3130,7 +3199,7 @@ async function netFetch(url, opt) {   // met een tijdslimiet, zodat het klasseme
 }
 async function pushBest(kind) {   // stuurt alleen je eigen beste score in, onder je eigen sleutel
   const nm = (save.name || 'Roy').slice(0, 12) || 'Roy';
-  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: REPLAY_VER} : null) : null;
+  const rec = kind === 'endless' ? (save.bestDist >= 10 ? {n: nm, v: save.bestDist} : null) : kind === 'pizza' ? (save.bestPizza ? {n: nm, v: save.bestPizza} : null) : kind === 'fles' ? (save.bestFles ? {n: nm, v: save.bestFles} : null) : kind === 'bake' ? (save.bestBake ? {n: nm, v: save.bestBake} : null) : kind === 'rodina' ? (save.rodinaBest ? {n: nm, v: save.rodinaBest.v, x: save.rodinaBest.x || 0, s: save.rodinaBest.s, r: save.rodinaBest.r, rv: save.rodinaBest.rv || REPLAY_VER, fc: save.rodinaBest.fc ? 1 : 0} : null) : null;
   if (!rec) return;
   rec.t = {'.sv': 'timestamp'};
   for (const path of kind === 'rodina' ? ['boss', 'rodina'] : [kind])   // Rodina: naar beide plekken, welke de regels ook toestaan
@@ -3185,7 +3254,7 @@ function renderBoard() {
     if (boardTab === 'rodina') {   // replay terugkijken
       const rec = useOnline ? e : (save.rodinaBest && Math.abs(save.rodinaBest.v - e.v) < .05 ? Object.assign({n: save.name || 'Roy'}, save.rodinaBest) : null);
       if (rec && rec.r && rec.rv >= 1 && rec.rv <= REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
-        b.onclick = ev => { ev.stopPropagation(); startReplay({s: rec.s, r: rec.r, n: rec.n}); }; r.appendChild(b); }
+        if (rec.fc) b.textContent = '▶ 🎥'; b.onclick = ev => { ev.stopPropagation(); startReplay({s: rec.s, r: rec.r, n: rec.n, id: rec.id, fc: rec.fc, local: !useOnline || rec.mine}); }; r.appendChild(b); }
     }
     el.appendChild(r);
   });
@@ -3231,7 +3300,7 @@ function renderModes() {
   const el = $('modeList'); if (!el) return; el.innerHTML = '';
   [
     ['run', 'Run Roy Run!', 'Spring over alles heen. Het gaat steeds sneller.', save.bestDist ? save.bestDist + ' m' : 'Nieuw', save.bestDist ? 'jouw record' : '', () => { goFullscreen(); startRun('endless'); }],
-    ['boss', 'Eindbaas Rodina', 'Drie fases, drie plekken. Gooi worst terug.', save.rodinaBest ? fmtT(save.rodinaBest.v) : 'Nieuw', save.rodinaBest ? 'record' : '', () => { goFullscreen(); startRun('boss'); }],
+    ['boss', 'Eindbaas Rodina', 'Drie fases, drie plekken. Gooi worst terug.', save.rodinaBest ? fmtT(save.rodinaBest.v) : 'Nieuw', save.rodinaBest ? 'record' : '', () => { if (save.fcAsked) { goFullscreen(); startRun('boss'); } else showView('facecam', true); }],
     ['pizza', 'Pizzatoren', 'Kantel je telefoon en houd de stapel dozen in balans.', save.bestPizza ? save.bestPizza + ' dozen' : 'Nieuw', save.bestPizza ? 'record' : '', () => { tiltEnable(); goFullscreen(); startRun('pizza'); }],
     ['fles', "Joyce's flesjes", 'Tik de flesjes kapot. Niet op Roy tikken!', save.bestFles ? save.bestFles + ' flesjes' : 'Nieuw', save.bestFles ? 'record' : '', () => { goFullscreen(); startRun('shoot'); }],
     ['fnar', "Five Nights at Roy's", 'Overleef de nachtdienst. Volume aan…', save.fnarBest ? 'Nacht ' + Math.min(5, save.fnarBest) : 'Nieuw', save.fnarBest ? (save.fnarBest >= 5 ? 'alles gehaald' : 'gehaald') : '', () => { goFullscreen(); audio(); startRun('fnar'); }],
@@ -3252,7 +3321,7 @@ function renderModes() {
     b.onclick = () => { audio(); fn(); }; el.appendChild(b);
   });
 }
-function toMenu() { theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
+function toMenu() { fcStop(); theme = THEMES[0]; themeFrom = null; themeT = 0; if (ON.room) onlineLeave(); if (state === 'pause' || state === 'play') bank(); state = 'menu'; held = false; $('pauseBtn').style.display = 'none'; showView('main'); }
 
 function renderLevels() {
   const el = $('dishes'); el.innerHTML = '';
@@ -3299,10 +3368,15 @@ $('shareBtn').onclick = async () => {
   const txt = `${save.name || 'Ik'} haalde ${d} m in Run Roy Run` + (w ? `, versloeg Rodina in ${w.v.toFixed(1)} s` : '') + (save.bestPizza ? `, stapelde ${save.bestPizza} pizzadozen` : '') + (save.bestFles ? ` en tikte ${save.bestFles} flesjes kapot` : '') + ' in de Bella Sardegna-spellen. Doe je het beter?';
   try { if (navigator.share) await navigator.share({text: txt}); else { await navigator.clipboard.writeText(txt); $('shareBtn').textContent = 'Gekopieerd!'; setTimeout(() => $('shareBtn').textContent = 'Deel mijn record', 1600); } } catch (e) {}
 };
-function pause() { if (state !== 'play') return; state = 'pause'; held = false; pzPtrs.clear(); pzKeys.clear(); $('flipBtn').style.display = mode === 'pizza' ? '' : 'none'; $('flipBtn').textContent = save.tiltFlip ? 'Kantelen: omgedraaid' : 'Kantelen omdraaien'; showView('pause', true); }
+function pause() { if (state !== 'play') return; $('fcBtn').style.display = mode === 'boss' && BS && !BS.replay ? '' : 'none'; $('fcBtn').textContent = save.facecam ? 'Facecam: aan (tik om uit te zetten)' : 'Facecam: uit (tik om aan te zetten)'; state = 'pause'; held = false; pzPtrs.clear(); pzKeys.clear(); $('flipBtn').style.display = mode === 'pizza' ? '' : 'none'; $('flipBtn').textContent = save.tiltFlip ? 'Kantelen: omgedraaid' : 'Kantelen omdraaien'; showView('pause', true); }
 $('flipBtn').onclick = () => { save.tiltFlip = !save.tiltFlip; persist(); $('flipBtn').textContent = save.tiltFlip ? 'Kantelen: omgedraaid' : 'Kantelen omdraaien'; };
 $('pauseBtn').onclick = pause;
 $('resumeBtn').onclick = () => { state = 'play'; showView(null); };
+$('fcYes').onclick = () => { save.facecam = true; save.fcAsked = true; persist(); goFullscreen(); startRun('boss'); };
+$('fcNo').onclick = () => { save.facecam = false; save.fcAsked = true; persist(); goFullscreen(); startRun('boss'); };
+$('fcBtn').onclick = () => { save.facecam = !save.facecam; save.fcAsked = true; persist();
+  if (save.facecam) fcStart(); else { fcStop(); fcDelete(); }
+  $('fcBtn').textContent = save.facecam ? 'Facecam: aan (tik om uit te zetten)' : 'Facecam: uit (tik om aan te zetten)'; };
 $('retryBtn').onclick = () => { if (BR && BR.mode === 'online' && mode === 'brawl') { state = 'play'; showView(null); return; } bank(); startRun(mode, levelIdx); };
 $('againBtn').onclick = () => startRun(mode, levelIdx);
 $('nextBtn').onclick = () => startLevel(Math.min(LEVELS.length - 1, levelIdx + 1));
