@@ -3454,9 +3454,9 @@ async function loadOnline() {
   onlineState = 'loading'; renderBoard();
   try {
     await Promise.all(['endless', 'rodina', 'pizza', 'fles'].map(pushBest));
-    const [a, b1, pz, fl, b2] = await Promise.all(['endless', 'boss', 'pizza', 'fles', 'rodina'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => null)));
+    const [a, b1, pz, fl, b2] = await Promise.all(['endless', 'boss', 'pizza', 'fles', 'rodina'].map(k => netFetch(`${DB_URL}/best/${k}.json`).catch(() => undefined)));   // undefined = niet bereikbaar, null = nog leeg
     const b = Object.assign({}, b1 || {}, b2 || {});   // beide plekken samen; dubbele namen worden hieronder samengevoegd
-    if (a === null && b1 === null && b2 === null) throw new Error('offline');
+    if (a === undefined && b1 === undefined && b2 === undefined) throw new Error('offline');
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
       for (const k of Object.keys(o || {})) {
