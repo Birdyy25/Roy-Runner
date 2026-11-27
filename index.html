@@ -227,6 +227,8 @@ let save = {wallet: 0, owned: ['roy'], skin: 'roy', best: {}, mute: false};
 try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.owned) save = Object.assign(save, s); } catch (e) {}
 function cleanOldBoss() { if (save.bossBest || (save.board && save.board.boss)) { delete save.bossBest; if (save.board) delete save.board.boss; persist(); } }
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+const BOARD_RESET = 1795815562557;   // klassementen opnieuw begonnen: oudere scores tellen niet meer mee
+if ((save.boardReset || 0) < BOARD_RESET) { save.board = {}; for (const k of ['bestDist', 'bestPizza', 'bestFles', 'bestBake', 'rodinaBest']) delete save[k]; save.boardReset = BOARD_RESET; try { localStorage.removeItem('roy_facecam'); } catch (e) {} persist(); }
 
 // ================= Skins =================
 const SKINS = [
@@ -2042,9 +2044,9 @@ function drawFacecam(c) {   // rond bubbeltje linksonder, alleen in de replay
 // Vaste rekenstap (1/120 s) en een eigen toevalsgenerator: met alleen de tikken kun je een gevecht precies naspelen (replays).
 let BS = null;
 const BOSS_PAT = [
-  [[[0,'k'],[1.0,'k'],[2.0,'p']], [[0,'k'],[.9,'p'],[1.6,'k']], [[0,'w'],[1.4,'k']], [[0,'p'],[.5,'k'],[1.5,'k']], [[0,'v'],[1.3,'k'],[2.3,'p']], [[0,'t'],[.5,'k'],[1.5,'t']]],
-  [[[0,'k'],[.18,'k'],[1.1,'p'],[1.5,'k']], [[0,'w'],[1.0,'p'],[1.4,'k'],[2.2,'k']], [[0,'p'],[.4,'k'],[1.25,'p'],[1.65,'k']], [[0,'k'],[.7,'k'],[1.4,'k'],[2.25,'p']], [[0,'v'],[.9,'p'],[1.3,'k'],[2.0,'k']], [[0,'t'],[.4,'k'],[1.25,'t'],[1.65,'w']]],
-  [[[0,'k'],[.18,'k'],[1.0,'p'],[1.35,'k'],[2.05,'k'],[2.23,'k']], [[0,'p'],[.35,'k'],[1.2,'p'],[1.55,'w'],[2.75,'p']], [[0,'k'],[.65,'k'],[1.3,'k'],[1.95,'k'],[2.8,'p']], [[0,'v'],[.65,'k'],[1.45,'p'],[1.8,'k'],[2.45,'v']], [[0,'t'],[.35,'k'],[1.15,'t'],[1.5,'k'],[2.3,'t'],[2.65,'v']]],
+  [[[0,'m'],[1.1,'k'],[2.1,'m']], [[0,'k'],[1.0,'m'],[2.0,'p']], [[0,'k'],[1.0,'k'],[2.0,'p']], [[0,'k'],[.9,'p'],[1.6,'k']], [[0,'w'],[1.4,'k']], [[0,'p'],[.5,'k'],[1.5,'k']], [[0,'v'],[1.3,'k'],[2.3,'p']], [[0,'t'],[.5,'k'],[1.5,'t']]],
+  [[[0,'m'],[.85,'k'],[1.65,'m'],[2.4,'k']], [[0,'p'],[.9,'m'],[1.75,'k']], [[0,'k'],[.18,'k'],[1.1,'p'],[1.5,'k']], [[0,'w'],[1.0,'p'],[1.4,'k'],[2.2,'k']], [[0,'p'],[.4,'k'],[1.25,'p'],[1.65,'k']], [[0,'k'],[.7,'k'],[1.4,'k'],[2.25,'p']], [[0,'v'],[.9,'p'],[1.3,'k'],[2.0,'k']], [[0,'t'],[.4,'k'],[1.25,'t'],[1.65,'w']]],
+  [[[0,'m'],[.8,'k'],[1.55,'m'],[2.3,'p']], [[0,'k'],[.18,'k'],[1.0,'p'],[1.35,'k'],[2.05,'k'],[2.23,'k']], [[0,'p'],[.35,'k'],[1.2,'p'],[1.55,'w'],[2.75,'p']], [[0,'k'],[.65,'k'],[1.3,'k'],[1.95,'k'],[2.8,'p']], [[0,'v'],[.65,'k'],[1.45,'p'],[1.8,'k'],[2.45,'v']], [[0,'t'],[.35,'k'],[1.15,'t'],[1.5,'k'],[2.3,'t'],[2.65,'v']]],
 ];
 const STAGE_HP = [0, 100, 85, 110], STAGE_TITLE = ['', 'RODINA', 'RODINA OP DE VESPA', 'GIGA-RODINA'], STAGE_PLACE = ['', 'DE EETZAAL', 'OP STRAAT', 'DE WIJNKELDER'];
 const STREET = {room: 'straat', floorA: '#5a5a62', floorB: '#3e3e46', text: '#f7efdc', lamp: .5};
@@ -2278,7 +2280,7 @@ function bossStage1(dt) {
     BS.pt += dtR;
     while (BS.pi < BS.pat.length && BS.pt >= BS.pat[BS.pi][0]) {
       const ty = BS.pat[BS.pi][1]; BS.pi++; BS.wind = .35;
-      BS.proj.push({type: ty, x: bx - 62, y: ty === 'k' ? -16 : ty === 'p' || ty === 't' ? -132 : ty === 'v' ? -26 : -24, vx: -spd, delay: .35, rot: 0});
+      BS.proj.push({type: ty, x: bx - 62, y: ty === 'k' ? -16 : ty === 'p' || ty === 't' ? -132 : ty === 'v' ? -26 : ty === 'm' ? -66 : -24, vx: -spd, delay: .35, rot: 0});
     }
     if (BS.pi >= BS.pat.length && BS.pt > BS.pat[BS.pat.length - 1][0] + .9) {
       BS.cycles++;
@@ -2294,10 +2296,10 @@ function bossStage1(dt) {
   }
   for (const p of BS.proj) {
     if (p.delay > 0) { p.delay -= dt; if (p.delay <= 0) BS.rel = 1; continue; }
-    p.x += p.vx * dt; p.rot += dt * (p.type === 'w' ? -8 : p.type === 'p' ? 10 : p.type === 't' ? -5 : p.type === 'v' ? -11 : 0);
+    p.x += p.vx * dt; p.rot += dt * (p.type === 'w' ? -8 : p.type === 'p' ? 10 : p.type === 't' ? -5 : p.type === 'v' ? -11 : p.type === 'm' ? 13 : 0);
     if (p.type === 'v') { p.puff = (p.puff || 0) - dt; if (p.puff <= 0) { p.puff = .035; BS.clouds.push({x: p.x + 10, y: p.y - 10 - Math.random() * 30, r: 16 + Math.random() * 16, vy: -25 - Math.random() * 30, life: 1.7, max: 1.7}); } }
     const dx = Math.abs(p.x - px);
-    const hit = p.type === 'k' ? dx < 30 && BS.py > -30 : p.type === 'p' || p.type === 't' ? dx < 32 && BS.py < -36 : p.type === 'w' ? dx < 36 && BS.py > -44 : dx < 27 && BS.py > -36;
+    const hit = p.type === 'm' ? dx < 30 && !(BS.inDuck && BS.pground) && BS.py > -78 : p.type === 'k' ? dx < 30 && BS.py > -30 : p.type === 'p' || p.type === 't' ? dx < 32 && BS.py < -36 : p.type === 'w' ? dx < 36 && BS.py > -44 : dx < 27 && BS.py > -36;
     if (hit && BS.inv <= 0 && BS.fx.curry <= 0) { p.dead = true; if (p.type === 't') { BS.splat = 1.8; burst(px, groundY + p.y, 14, ['#5a3219', '#f3e3c3', '#8a5a34'], 320); } bossHurtPlayer(); if (state !== 'play') return; }
     if (p.x < -60) p.dead = true;
   }
@@ -2336,7 +2338,7 @@ function bossStage2(dt) {
 }
 // ---------- knock-out: tik de rondjes op tijd (zoals osu) om door te gaan naar de volgende fase
 function bossKoStart() {
-  BS.ko = {t: 0, act: [], left: BS.stage === 1 ? 6 : 8, next: .9, num: 0, ar: BS.stage === 1 ? 1.15 : .95, gap: BS.stage === 1 ? .62 : .5, last: null, combo: 0, done: 0};
+  BS.ko = {t: 0, act: [], left: BS.stage === 1 ? 8 : 10, next: .8, num: 0, ar: BS.stage === 1 ? .62 : .5, gap: 0, last: null, combo: 0, done: 0};
   BS.proj = []; BS.hz = []; BS.rain = []; BS.pu = null; BS.clouds = []; BS.cyc = 'ko'; BS.hurt = 0;
   if (BS.v) { BS.v.mode = 'ko'; }
   shake = 16; flash = .9; [392, 330, 262].forEach((f, i) => tone(f, f * .7, .35, 'sawtooth', .09, i * .14));
@@ -2346,23 +2348,23 @@ function bossKoStep(dt, tap) {
   if (BS.v && BS.stage === 2) { BS.v.y += (0 - BS.v.y) * Math.min(1, dt * 6); }
   if (K.done) { K.done += dt; if (K.done > .7) { BS.ko = null; BS.trans = 3; BS.transTo = BS.stage + 1; BS.switched = false; BS.shots = []; } return; }
   // nieuwe rondjes: steeds een stukje verder dan het vorige, rond Rodina
-  if (K.left > 0 && K.t >= K.next) {
+  if (K.left > 0 && !K.act.length && K.t >= K.next) {   // het volgende rondje komt pas als je het vorige hebt getikt
     const cx = BS.stage === 2 ? BS.v.x : W * .8, L = K.last;
     let x, y, tries = 0;
-    do { if (!L) { x = cx - 40; y = groundY - 150; } else { const a = BS.rng() * Math.PI * 2, d = 95 + BS.rng() * 70; x = L.x + Math.cos(a) * d; y = L.y + Math.sin(a) * d; } tries++; }
+    do { if (!L) { x = cx - 40; y = groundY - 150; } else { const a = BS.rng() * Math.PI * 2, d = 120 + BS.rng() * 110; x = L.x + Math.cos(a) * d; y = L.y + Math.sin(a) * d; } tries++; }
     while ((x < W * .42 || x > W - 60 || y < 110 || y > groundY - 30) && tries < 30);
     x = Math.max(W * .42, Math.min(W - 60, x)); y = Math.max(110, Math.min(groundY - 30, y));
-    const q = {x, y, t0: K.t, n: ++K.num}; K.act.push(q); K.last = q; K.left--; K.next = K.t + K.gap;
+    const q = {x, y, t0: K.t, n: ++K.num}; K.act.push(q); K.last = q; K.left--;
   }
   if (tap && K.act.length) {   // altijd het oudste rondje eerst
     if (!BS.replay) BS.rec.push([BS.step, 'K']);
-    const q = K.act.shift(), off = Math.abs(K.t - (q.t0 + K.ar)), perf = off < .14; K.combo++;
+    const q = K.act.shift(), off = Math.abs(K.t - (q.t0 + K.ar)), perf = off < .1; K.combo++; K.next = K.t + .04;
     popText(perf ? 'PERFECT!' : 'GOED!', q.x, q.y - 40, perf ? '#ffe14f' : '#fff', perf ? 22 : 17);
     burst(q.x, q.y, perf ? 16 : 10, ['#ffe14f', '#ffffff', BS.stage === 1 ? '#ff7a5a' : '#7ad0ff'], 300);
     tone(660 + Math.min(10, K.combo) * 60, 990 + Math.min(10, K.combo) * 60, .09, 'triangle', .07); BS.hurt = .15;
   }
-  for (const q of K.act) if (K.t > q.t0 + K.ar + .2) {   // te laat: komt achteraan terug
-    q.miss = true; K.left++; K.combo = 0; popText('MIS', q.x, q.y - 30, '#ff8a7a', 18); tone(200, 120, .15, 'sawtooth', .06);
+  for (const q of K.act) if (K.t > q.t0 + K.ar + .12) {   // te laat: komt achteraan terug
+    q.miss = true; K.left++; K.combo = 0; K.next = K.t + .3; popText('MIS', q.x, q.y - 30, '#ff8a7a', 18); tone(200, 120, .15, 'sawtooth', .06);
   }
   K.act = K.act.filter(q => !q.miss);
   if (K.left <= 0 && !K.act.length) { K.done = .001; shake = 20; flash = 1; tone(140, 60, .7, 'sawtooth', .12); const gx = BS.stage === 2 ? BS.v.x : W * .8; burst(gx, groundY - 120, 40, ['#ffe14f', '#e0301e', '#fff'], 500); }
@@ -2413,7 +2415,7 @@ function bossStage3(dt) {
   }
   if (G.mode === 'rise') { if (G.t > 1.4) { G.mode = 'idle'; G.t = 0; } return; }
   if (G.mode === 'idle') { if (G.t > (rage ? .35 : .6)) { const L = rage ? G_RAGE : G_ATT; if (!G.q.length) G.q = L[Math.floor(BS.rng() * L.length)].slice(); G.cur = G.q.shift();
-      if (G.cur === 'bolts') { const r = BS.rng(); G.cur = r < .34 ? 'lowbolt' : r < .67 ? 'highbolt' : 'combo'; }
+      if (G.cur === 'bolts') { const r = BS.rng(); G.cur = r < .25 ? 'lowbolt' : r < .45 ? 'highbolt' : r < .75 ? 'midbolt' : 'combo'; G.cmb = BS.rng() < .5 ? 'mid' : 'hi'; }
       G.mode = 'tell'; G.t = 0; G.k = 0; } return; }
   if (G.mode === 'tell') {   // vooraankondiging: bol op de hoogte van de straal, rook uit de mond, trillen, handen omhoog
     if (G.cur === 'rings' && Math.random() < dt * 14) BS.clouds.push({x: G.x - 30 + (Math.random() - .5) * 30, y: G.y + 70, r: 10 + Math.random() * 10, vy: -40, life: .8, max: .8});
@@ -2424,13 +2426,13 @@ function bossStage3(dt) {
   }
   if (G.mode === 'fire') {
     const c2 = G.cur;
-    if (c2 === 'combo') {   // laag, dan meteen hoog
+    if (c2 === 'combo') {   // laag, dan meteen hoog (of op hoofdhoogte)
       if (G.k === 0) { G.k = 1; BS.hz.push({type: 'bolt', hi: false, x: G.x - 80, y: -6, vx: -1020 * sp, w: 200, h: 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
-      if (G.k === 1 && G.t > (rage ? .55 : .62)) { G.k = 2; BS.hz.push({type: 'bolt', hi: true, x: G.x - 80, y: -108, vx: -1020 * sp, w: 200, h: 38, harm: true}); tone(1800, 400, .35, 'sawtooth', .07); G.shake = .2; }
+      if (G.k === 1 && G.t > (rage ? .55 : .62)) { G.k = 2; BS.hz.push(G.cmb === 'mid' ? {type: 'bolt', mid: true, x: G.x - 80, y: -54, vx: -1020 * sp, w: 200, h: 30, harm: true} : {type: 'bolt', hi: true, x: G.x - 80, y: -108, vx: -1020 * sp, w: 200, h: 38, harm: true}); tone(1800, 400, .35, 'sawtooth', .07); G.shake = .2; }
       if (G.t > 1.2) { G.mode = 'idle'; G.t = 0; G.n++; }
-    } else if (c2 === 'lowbolt' || c2 === 'highbolt') {
+    } else if (c2 === 'lowbolt' || c2 === 'highbolt' || c2 === 'midbolt') {
       const cnt = rage ? 2 : 1;
-      if (G.k < cnt && G.t > G.k * .75) { G.k++; const hi = c2 === 'highbolt'; BS.hz.push({type: 'bolt', hi, x: G.x - 80, y: hi ? -108 : -6, vx: -1020 * sp, w: 220, h: hi ? 38 : 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
+      if (G.k < cnt && G.t > G.k * .75) { G.k++; const hi = c2 === 'highbolt', mid = c2 === 'midbolt'; BS.hz.push({type: 'bolt', hi, mid, x: G.x - 80, y: hi ? -108 : mid ? -54 : -6, vx: -1020 * sp, w: 220, h: hi ? 38 : mid ? 30 : 26, harm: true}); tone(1600, 300, .35, 'sawtooth', .07); G.shake = .2; }
       if (G.t > cnt * .75 + .3) { G.mode = 'idle'; G.t = 0; G.n++; }
     } else if (c2 === 'rings') {
       const cnt = rage ? 4 : 3;
@@ -2527,6 +2529,9 @@ function drawBossProj(c, p, time) {
     c.rotate(Math.sin(p.rot) * .25);
     c.fillStyle = '#fff'; c.beginPath(); c.ellipse(0, 0, 22, 8, 0, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#9aa3b3'; c.lineWidth = 1.5; c.stroke();
     c.strokeStyle = '#b0222b'; c.lineWidth = 2; c.beginPath(); c.ellipse(0, 0, 14, 4.5, 0, 0, Math.PI * 2); c.stroke();
+  } else if (p.type === 'm') { // koekenpan op hoofdhoogte, plat ronddraaiend
+    c.scale(1, .5); c.rotate(p.rot); c.fillStyle = '#5a4a40'; rr(c, 14, -4, 26, 8, 4); c.fill();
+    c.fillStyle = '#26262c'; c.beginPath(); c.arc(0, 0, 20, 0, 7); c.fill(); c.strokeStyle = '#6a6a74'; c.lineWidth = 3; c.stroke(); c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.arc(-6, -6, 8, 0, 7); c.fill();
   } else if (p.type === 'w') { // rollende kaas
     c.rotate(p.rot); c.fillStyle = '#f2c230'; c.beginPath(); c.arc(0, 0, 24, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#b8860b'; c.lineWidth = 3; c.stroke();
     c.fillStyle = '#d9a514'; for (let i = 0; i < 5; i++) { c.beginPath(); c.arc(Math.cos(i * 1.3) * 12, Math.sin(i * 1.3) * 12, 3 + (i % 2) * 2, 0, Math.PI * 2); c.fill(); }
@@ -2597,7 +2602,8 @@ function drawGiga(c, time) {   // reusachtig hoofd dat boven de vaten uittorent
     const orb = (y, a) => { const r = 6 + k2 * 14; const g2 = c.createRadialGradient(ox, y, 1, ox, y, r * 2.2); g2.addColorStop(0, `rgba(255,255,255,${a})`); g2.addColorStop(.35, `rgba(255,70,40,${a * .9})`); g2.addColorStop(1, 'rgba(255,70,40,0)'); c.fillStyle = g2; c.beginPath(); c.arc(ox, y, r * 2.2, 0, 7); c.fill();
       for (let i = 0; i < 5; i++) { const an = time / 90 + i * 1.25, d = r * 2.6 * (1 - k2 * .6); c.fillStyle = `rgba(255,140,90,${a * .8})`; c.beginPath(); c.arc(ox + Math.cos(an) * d, y + Math.sin(an) * d, 2, 0, 7); c.fill(); } };
     if (G.cur === 'lowbolt' || G.cur === 'combo') orb(-19, 1);
-    if (G.cur === 'highbolt' || G.cur === 'combo') orb(-127, G.cur === 'combo' ? .55 : 1);
+    if (G.cur === 'highbolt' || (G.cur === 'combo' && G.cmb === 'hi')) orb(-127, G.cur === 'combo' ? .55 : 1);
+    if (G.cur === 'midbolt' || (G.cur === 'combo' && G.cmb === 'mid')) orb(-69, G.cur === 'combo' ? .55 : 1);
   }
 }
 function drawGigaHands(c, time) {   // reuzenhanden met rode nagels, schaduw op de vloer
@@ -3454,7 +3460,7 @@ async function loadOnline() {
     const list = (o, asc) => {   // één regel per naam: dezelfde speler in Safari, Chrome of de webapp telt maar één keer, met zijn beste score
       const best = new Map(), me = myId();
       for (const k of Object.keys(o || {})) {
-        const e = Object.assign({id: k}, o[k]); if (!e || typeof e.v !== 'number' || typeof e.n !== 'string') continue;
+        const e = Object.assign({id: k}, o[k]); if (!e || typeof e.v !== 'number' || typeof e.n !== 'string' || !(e.t >= BOARD_RESET)) continue;
         const key = e.n.trim().toLowerCase(); if (!key) continue;
         const cur = best.get(key), better = !cur || (asc ? e.v < cur.v : e.v > cur.v) || (e.v === cur.v && k === me);
         if (better) best.set(key, Object.assign(e, {mine: (cur && cur.mine) || k === me})); else if (k === me) cur.mine = true;
