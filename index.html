@@ -1922,6 +1922,7 @@ function fcStart() {
       if (tok !== FC.tok || mode !== 'boss' || !BS || BS.replay || state !== 'play') { st.getTracks().forEach(t => t.stop()); return; }
       FC.stream = st;
       const v = FC.video || (FC.video = document.createElement('video'));
+      if (!v.isConnected) { v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1'; document.body.appendChild(v); }   // iPhone ververst het camerabeeld alleen als de video echt in de pagina staat
       v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('muted', ''); v.srcObject = st; v.play().catch(() => {});
       if (!FC.cv) { FC.cv = document.createElement('canvas'); FC.cv.width = FC.cv.height = FC_SIZE; FC.ctx = FC.cv.getContext('2d'); }
       FC.on = true;
