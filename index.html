@@ -73,6 +73,7 @@
   .tabs{gap:.4em;margin:.4em 0 .2em}
   .tab{flex:1;font-family:inherit;font-size:.7em;font-weight:700;padding:.3em;border-radius:1em;border:.1em solid var(--green);background:transparent;color:var(--green);cursor:pointer}
   .tab.on{background:var(--green);color:var(--cream)}
+  .brow .rp.alt{background:transparent;color:var(--red);border:.08em solid var(--red)}
   .brow .rp{flex:none;border:0;border-radius:1em;min-width:1.7em;padding:0 .45em;height:1.7em;margin-left:.2em;background:var(--red);color:#fff;font-size:.72em;line-height:1;cursor:pointer;align-self:center}
   .brow{display:flex;align-items:baseline;gap:.5em;font-size:.86em;padding:.16em .3em;border-bottom:.06em dashed rgba(43,26,18,.22)}
   .brow .r{width:1.6em;font-weight:700;color:var(--red)} .brow .n{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .brow .d{font-size:.8em;opacity:.6} .brow .v{font-weight:700}
@@ -2000,7 +2001,8 @@ function drawFacecam(c) {   // rond bubbeltje linksonder, alleen in de replay
   if (R.vid) {   // echte video, gelijk gehouden met de replay
     const V2 = R.vid, el = V2.el; if (BS.step < V2.map[0][0]) return;
     const vt = fcVideoTime(V2.map, BS.step);
-    if (state === 'play') { if (el.readyState >= 2 && Math.abs(el.currentTime - vt) > .3) { try { el.currentTime = vt; } catch (e) {} } if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
+    const after = (state === 'win' || state === 'dead') && deadTimer < 4.6, vt2 = after ? vt + deadTimer : vt;
+    if (state === 'play' || after) { if (el.readyState >= 2 && Math.abs(el.currentTime - vt2) > .3) { try { el.currentTime = vt2; } catch (e) {} } if (el.paused) el.play().catch(() => {}); } else if (!el.paused) el.pause();
     if (el.readyState < 2) return;
     const r = 54, x = 72, y = H - 76;
     c.save(); c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.arc(x + 3, y + 4, r + 4, 0, 7); c.fill(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip(); c.drawImage(el, x - r, y - r, r * 2, r * 2); c.restore();
@@ -2051,7 +2053,7 @@ const BPU = {
   glizzy: {n: "DANIEL'S GLIZZY-REGEN!", d: '', dur: 0},
   curry: {n: 'CURRY VAN ROY!', d: 'onkwetsbaar + dubbele schade', dur: 5},
   mega: {n: 'MEGA-WORST!', d: '3 keer extra hard', dur: 0},
-  ijs: {n: 'IJSJE! RODINA BEVRIEST', d: 'bevroren', dur: 3.5},
+  ijs: {n: 'IJSJE! ALLES BEVRIEST', d: 'bevroren', dur: 3.5},
   hart: {n: 'LASAGNE VAN MAMMA! +1 HART', d: '', dur: 0},
 };
 const PU_Y = -165;
@@ -2075,7 +2077,9 @@ function bossPowerTick(dt) {
       burst(px, groundY + PU_Y, 18, ['#ffe14f', '#fff', '#9fe08a'], 320);
       if (T2 === 'espresso') F.espresso = BPU.espresso.dur;
       else if (T2 === 'curry') { F.curry = BPU.curry.dur; flash = .6; }
-      else if (T2 === 'ijs') { F.ijs = BPU.ijs.dur; tone(2000, 600, .5, 'sine', .06); }
+      else if (T2 === 'ijs') { F.ijs = BPU.ijs.dur; tone(2000, 600, .5, 'sine', .06);   // alles wat onderweg is spat in ijsscherven uiteen
+        for (const q of BS.proj.concat(BS.hz.filter(z => z.harm || z.type === 'bomb'))) burst(q.x, groundY + (q.y || -20), 8, ['#c8f0ff', '#ffffff', '#8ad8ff'], 260);
+        BS.proj = []; BS.hz = BS.hz.filter(z => !z.harm && z.type !== 'bomb'); BS.clouds = []; }
       else if (T2 === 'mega') F.mega = 3;
       else if (T2 === 'hart') BS.lives = Math.min(3, BS.lives + 1);
       else if (T2 === 'glizzy') for (let i = 0; i < 12; i++) BS.rain.push({x: bossTX() - 50 + BS.rng() * 90, y: -groundY - 40 - i * 55, vy: 520 + BS.rng() * 120, rot: 0});
@@ -2120,7 +2124,7 @@ function bossHurtPlayer() {
   if (BS.lives <= 1) deathQuote = pickQuote('boss');
   BS.lives--; BS.inv = 1.3; shake = 12; flash = .8; tone(260, 70, .3, 'sawtooth', .11);
   if (BS.lives <= 0) {
-    state = 'dead'; deadTimer = 0; fcStop();
+    state = 'dead'; deadTimer = 0; { const tk0 = FC.tok; setTimeout(() => { if (FC.tok === tk0) fcStop(); }, 4500); }
     particles.push({body: 1, x: W * .2, y: groundY + BS.py, vx: -110, vy: -400, r: 0, vr: -6, life: 1.6, floor: groundY - 8});
     particles.push({head: 1, x: W * .2, y: groundY + BS.py - 90, vx: -90, vy: -560, r: 0, vr: -8, life: 1.6});
     worstCount = Math.floor(BS.dmg / 8) + (BS.stage - 1) * 15; if (!BS.replay) bank();
@@ -2138,7 +2142,7 @@ function bossDamage(d, x, y, big) {
   if (BS.hp > 0) return;
   BS.hp = 0;
   if (BS.stage < 3) { BS.trans = 3; BS.transTo = BS.stage + 1; BS.switched = false; BS.proj = []; BS.hz = []; BS.shots = []; BS.rain = []; shake = 16; flash = .9; [392, 330, 262].forEach((f, i) => tone(f, f * .7, .35, 'sawtooth', .09, i * .14)); return; }
-  state = 'win'; deadTimer = 0; BS.proj = []; BS.hz = []; BS.rain = []; shake = 18; flash = 1; setTimeout(fcStop, 50);
+  state = 'win'; deadTimer = 0; BS.proj = []; BS.hz = []; BS.rain = []; shake = 18; flash = 1; const tk0 = FC.tok; setTimeout(() => { if (FC.tok === tk0) fcStop(); }, 4500);   // camera loopt nog even door voor de reactie
   worstCount = Math.floor(BS.dmg / 8) + 80 + 15 * BS.lives;
   if (!BS.replay) {
     save.bossWins = (save.bossWins || 0) + 1;
@@ -2160,10 +2164,10 @@ function bossSetStage(n) {   // midden in de overgang: nieuwe plek en nieuwe aan
 function updateBoss(dt) {
   if (state === 'dead' || state === 'win') {
     deadTimer += dt;
-    if (deadTimer > 1.9 && !BS.shown) {
+    if (deadTimer > (BS.replay ? 4.6 : 1.9) && !BS.shown) {   // in een replay nog even doorkijken naar de reactie
       BS.shown = true;
       lastFight = BS.replay ? lastFight : {s: BS.seed, r: encodeRep(BS.rec), steps: BS.step, n: save.name || 'Roy', fcFrames: fcHasContent(FC.frames) ? Array.from(FC.frames, x => x || '') : null, fcVideo: FCV.ready && FCV.ready.s === BS.seed ? FCV.ready : null};
-      $('last10Btn').style.display = (BS.replay ? BS.replay.full : lastFight) ? '' : 'none';
+      $('last10Btn').style.display = 'none';
       if (BS.replay) showResult(state === 'win' ? 'Replay: Rodina verslagen' : 'Replay afgelopen', `Replay van <b>${BS.replay.name}</b><br>${state === 'win' ? 'Alle drie de fases in ' + fmtT(BS.t) : 'Tot fase ' + BS.stage + ' gekomen'}`);
       else if (state === 'win') showResult('Rodina verslagen!', `Alle drie de fases in ${fmtT(BS.t)}${save.rodinaBest && save.rodinaBest.v >= Math.round(BS.t * 10) / 10 && save.rodinaBest.s === BS.seed ? ' · nieuw record!' : save.rodinaBest ? ' · record ' + fmtT(save.rodinaBest.v) : ''}<br>Met nog ${BS.lives} ${BS.lives === 1 ? 'hartje' : 'hartjes'} over<br>🌭 +${worstCount} worstjes`);
       else showResult("Je bent geRoy'd", `<i>“${deathQuote}”</i><br><br>Fase ${BS.stage}/3 · ${STAGE_TITLE[BS.stage].toLowerCase()} had nog ${Math.max(1, Math.ceil(BS.hp / BS.hpMax * 100))}% over<br>${fmtT(BS.t)} volgehouden · 🌭 +${worstCount} worstjes`);
@@ -2207,7 +2211,7 @@ function bossStep(dt) {
   // gevaren van fase 2 en 3 (rechthoeken)
   const ry1 = BS.py - 92, ry2 = BS.py - 2;
   for (const z of BS.hz) {
-    const zs = BS.fx.ijs > 0 ? .25 : 1; z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt * zs;
+    const zs = 1; z.t = (z.t || 0) + dt; z.x += (z.vx || 0) * dt * zs;
     if (z.vy !== undefined) { z.vy += (z.g || 0) * dt * zs; z.y += z.vy * dt * zs; if (z.land && z.y >= z.land) { z.dead = true; z.onLand && z.onLand(z); continue; } }
     if (z.rot !== undefined) z.rot += (z.vr || 0) * dt;
     if (z.life !== undefined) { z.life -= dt; if (z.life <= 0) { z.dead = true; continue; } }
@@ -2264,7 +2268,7 @@ function bossStage1(dt) {
   }
   for (const p of BS.proj) {
     if (p.delay > 0) { p.delay -= dt; if (p.delay <= 0) BS.rel = 1; continue; }
-    p.x += p.vx * dt * (fz ? .25 : 1); p.rot += dt * (p.type === 'w' ? -8 : p.type === 'p' ? 10 : p.type === 't' ? -5 : p.type === 'v' ? -11 : 0);
+    p.x += p.vx * dt; p.rot += dt * (p.type === 'w' ? -8 : p.type === 'p' ? 10 : p.type === 't' ? -5 : p.type === 'v' ? -11 : 0);
     if (p.type === 'v') { p.puff = (p.puff || 0) - dt; if (p.puff <= 0) { p.puff = .035; BS.clouds.push({x: p.x + 10, y: p.y - 10 - Math.random() * 30, r: 16 + Math.random() * 16, vy: -25 - Math.random() * 30, life: 1.7, max: 1.7}); } }
     const dx = Math.abs(p.x - px);
     const hit = p.type === 'k' ? dx < 30 && BS.py > -30 : p.type === 'p' || p.type === 't' ? dx < 32 && BS.py < -36 : p.type === 'w' ? dx < 36 && BS.py > -44 : dx < 27 && BS.py > -36;
@@ -3353,9 +3357,9 @@ function renderBoard() {
     if (boardTab === 'rodina') {   // replay terugkijken
       const rec = useOnline ? e : (save.rodinaBest && Math.abs(save.rodinaBest.v - e.v) < .05 ? Object.assign({n: save.name || 'Roy'}, save.rodinaBest) : null);
       if (rec && rec.r && rec.rv >= 1 && rec.rv <= REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
-        if (rec.fc) b.textContent = '▶ 🎥'; const rr2 = {s: rec.s, r: rec.r, n: rec.n, id: rec.id, fc: rec.fc, v: rec.v, local: !useOnline || rec.mine};
-        b.onclick = ev => { ev.stopPropagation(); startReplay(rr2); }; r.appendChild(b);
-        const b2 = document.createElement('button'); b2.className = 'rp'; b2.textContent = '10s'; b2.title = 'Laatste 10 seconden'; b2.onclick = ev => { ev.stopPropagation(); startReplay(rr2, true); }; r.appendChild(b2); }
+        b.textContent = rec.fc ? '▶ 🎥 einde' : '▶ einde'; b.title = 'Laatste 10 seconden'; const rr2 = {s: rec.s, r: rec.r, n: rec.n, id: rec.id, fc: rec.fc, v: rec.v, local: !useOnline || rec.mine};
+        b.onclick = ev => { ev.stopPropagation(); startReplay(rr2, true); }; r.appendChild(b);
+        const b2 = document.createElement('button'); b2.className = 'rp alt'; b2.textContent = 'hele'; b2.title = 'Hele replay'; b2.onclick = ev => { ev.stopPropagation(); startReplay(rr2); }; r.appendChild(b2); }
     }
     el.appendChild(r);
   });
