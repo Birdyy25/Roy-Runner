@@ -1899,7 +1899,7 @@ const BOSS_PAT = [
 ];
 const STAGE_HP = [0, 100, 85, 110], STAGE_TITLE = ['', 'RODINA', 'RODINA OP DE VESPA', 'GIGA-RODINA'], STAGE_PLACE = ['', 'DE EETZAAL', 'OP STRAAT', 'DE WIJNKELDER'];
 const STREET = {room: 'straat', floorA: '#5a5a62', floorB: '#3e3e46', text: '#f7efdc', lamp: .5};
-const BSTEP = 1 / 120, BOSS_HP = 100, REPLAY_VER = 1;
+const BSTEP = 1 / 120, BOSS_HP = 100, REPLAY_VER = 2;
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const bossPhase = () => !BS ? 0 : BS.stage === 1 ? (BS.hp > BS.hpMax * .5 ? 0 : 1) : 2;
 const bossTX = () => BS.stage === 2 && BS.v ? BS.v.x : BS.stage === 3 && BS.g ? BS.g.x : W * .8;   // waar Rodina nu staat
@@ -2047,11 +2047,12 @@ function bossStep(dt) {
   BS.step++;
   // invoer: live opnemen, of uit de replay halen
   let tap = false, thr = false;
-  if (BS.replay) { const R = BS.replay; while (R.i < R.ev.length && R.ev[R.i][0] <= BS.step) { const k = R.ev[R.i][1]; if (k === 'J') tap = true; else if (k === 'T') thr = true; else if (k === 'H') BS.inHold = true; else if (k === 'U') BS.inHold = false; R.i++; } }
-  else { tap = BS.qJump; thr = BS.qThrow; BS.qJump = BS.qThrow = false; const h = held;
-    if (tap) BS.rec.push([BS.step, 'J']); if (thr) BS.rec.push([BS.step, 'T']); if (h !== BS.inHold) { BS.inHold = h; BS.rec.push([BS.step, h ? 'H' : 'U']); } }
+  if (BS.replay) { const R = BS.replay; while (R.i < R.ev.length && R.ev[R.i][0] <= BS.step) { const k = R.ev[R.i][1]; if (k === 'J') tap = true; else if (k === 'T') thr = true; else if (k === 'H') BS.inHold = true; else if (k === 'U') BS.inHold = false; else if (k === 'A') BS.inThrow = true; else if (k === 'B') BS.inThrow = false; R.i++; } }
+  else { tap = BS.qJump; thr = BS.qThrow; BS.qJump = BS.qThrow = false; const h = held, th = throwPtrs.size > 0;
+    if (tap) BS.rec.push([BS.step, 'J']); if (thr) BS.rec.push([BS.step, 'T']); if (h !== BS.inHold) { BS.inHold = h; BS.rec.push([BS.step, h ? 'H' : 'U']); }
+    if (th !== !!BS.inThrow) { BS.inThrow = th; BS.rec.push([BS.step, th ? 'A' : 'B']); } }
   if (tap) BS.jb = .26;   // springbuffer: ook een tik net vóór de landing telt
-  if (thr) bossThrow();
+  if (thr || BS.inThrow) bossThrow();
   const px = W * .2;
   BS.t += dt; BS.rel = Math.max(0, (BS.rel || 0) - dt * 3.5); BS.splat = (BS.splat || 0) - dt; BS.cd -= dt; BS.inv -= dt; BS.hurt -= dt; BS.hint -= dt; BS.wind -= dt;
   // speler
@@ -2440,7 +2441,7 @@ function drawBoss(time) {
       c.globalAlpha = .55; c.fillStyle = 'rgba(43,26,18,.6)'; c.beginPath(); c.arc(bxx, H - 64, 50, 0, Math.PI * 2); c.fill(); c.strokeStyle = '#f7efdc'; c.lineWidth = 2; c.stroke();
       c.globalAlpha = .9; c.fillStyle = '#f7efdc'; c.font = 'bold 15px Georgia,serif'; c.textAlign = 'center'; c.fillText(lab, bxx, H - 59); c.globalAlpha = 1;
     }
-    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · gooi worst' : BS.stage === 2 ? 'Spring over de Vespa en de schokgolven · blijf staan bij HOP! · gooi als ze stilstaat' : 'Spring over lage stralen, ringen en vaten · blijf laag bij hoge stralen · gooi in haar mond', BS.hint);
+    if (BS.hint > 0) drawHint(c, BS.stage === 1 ? 'Spring over messen, kaas en vapes · blijf laag bij borden en tiramisu · houd GOOI ingedrukt om te blijven gooien' : BS.stage === 2 ? 'Spring over de Vespa en de schokgolven · blijf staan bij HOP! · gooi als ze stilstaat' : 'Spring over lage stralen, ringen en vaten · blijf laag bij hoge stralen · gooi in haar mond', BS.hint);
   }
   if (BS.splat > 0) { c.globalAlpha = Math.min(1, BS.splat) * .85;
     for (let i = 0; i < 9; i++) { c.fillStyle = i % 2 ? '#f3e3c3' : '#5a3219'; c.beginPath(); c.ellipse(rnd(i + 3) * W, rnd(i + 40) * H * .8 + (1.8 - BS.splat) * 30, 40 + rnd(i) * 50, 30 + rnd(i + 9) * 40, rnd(i) * 3, 0, Math.PI * 2); c.fill(); }
@@ -3148,7 +3149,7 @@ async function loadOnline() {
       }
       return [...best.values()].sort((p, q) => asc ? p.v - q.v : q.v - p.v);   // iedereen, geen top-zoveel
     };
-    online = {endless: list(a, false), rodina: list(Object.fromEntries(Object.entries(b || {}).filter(([k, e]) => e && e.rv === REPLAY_VER)), true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
+    online = {endless: list(a, false), rodina: list(Object.fromEntries(Object.entries(b || {}).filter(([k, e]) => e && e.rv >= 1 && e.rv <= REPLAY_VER)), true), pizza: list(pz, false), fles: list(fl, false)}; onlineState = 'ok';
   } catch (e) { onlineState = 'fail'; }
   if ($('v-board').classList.contains('on')) renderBoard();
 }
@@ -3179,7 +3180,7 @@ function renderBoard() {
     r.insertAdjacentHTML('beforeend', `<span class="d">${dt}</span><span class="v">${boardTab === 'pizza' ? e.v + (e.v === 1 ? ' doos' : ' dozen') : boardTab === 'fles' ? e.v + ' flesjes' : boardTab === 'bake' ? e.v + " pizza's" : boardTab === 'endless' ? Math.round(e.v) + ' m' : Number(e.v).toFixed(1) + ' s' + ' · ' + '♥'.repeat(Math.max(0, Math.min(3, e.x | 0)))}</span>`);
     if (boardTab === 'rodina') {   // replay terugkijken
       const rec = useOnline ? e : (save.rodinaBest && Math.abs(save.rodinaBest.v - e.v) < .05 ? Object.assign({n: save.name || 'Roy'}, save.rodinaBest) : null);
-      if (rec && rec.r && rec.rv === REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
+      if (rec && rec.r && rec.rv >= 1 && rec.rv <= REPLAY_VER && typeof rec.s === 'number') { const b = document.createElement('button'); b.className = 'rp'; b.textContent = '▶'; b.title = 'Replay bekijken';
         b.onclick = ev => { ev.stopPropagation(); startReplay({s: rec.s, r: rec.r, n: rec.n}); }; r.appendChild(b); }
     }
     el.appendChild(r);
@@ -3312,8 +3313,24 @@ function gamePt(e) {
   const x = e.clientX, y = e.clientY;
   return LAY.portrait ? {x: (y - LAY.t) / scale, y: (LAY.l + LAY.aw - x) / scale} : {x: (x - LAY.l) / scale, y: (y - LAY.t) / scale};
 }
+// Springen en gooien via touch-events: Safari houdt meerdere vingers tegelijk daarmee betrouwbaarder bij dan met pointer-events
+const TOUCH_MODES = m => m === 'boss' || m === 'endless' || m === 'level';
+const throwPtrs = new Set();
+function actDown(p, id) {
+  if (state === 'dead' && mode === 'endless' && deadTimer > .7) { reset(); return; }
+  if (state === 'play' && mode === 'endless' && Math.hypot(p.x - SLIDE_BTN.x, p.y - (H - SLIDE_BTN.dy)) < SLIDE_BTN.r + 16) { slidePtrs.add(id); syncHeld(); slideBuf = .14; return; }
+  if (state !== 'play') return;
+  if (mode === 'boss' && BS && BS.replay) return;
+  if (mode === 'boss' && p.x > W / 2) { throwPtrs.add(id); if (BS) BS.qThrow = true; return; }
+  jumpPtrs.add(id); syncHeld(); jumpPressed = true; jumpBuf = .14; if (mode === 'boss' && BS) BS.qJump = true;
+}
+function actUp(id) { jumpPtrs.delete(id); slidePtrs.delete(id); throwPtrs.delete(id); syncHeld(); }
+cv.addEventListener('touchstart', e => { if (!TOUCH_MODES(mode)) return; e.preventDefault(); audio(); for (const t of e.changedTouches) actDown(gamePt(t), 't' + t.identifier); }, {passive: false});
+for (const ev of ['touchend', 'touchcancel']) cv.addEventListener(ev, e => { for (const t of e.changedTouches) actUp('t' + t.identifier); if (!e.touches.length) { jumpPtrs.clear(); throwPtrs.clear(); syncHeld(); } });
 cv.addEventListener('pointerdown', e => {
   e.preventDefault(); audio();
+  if (e.pointerType === 'touch' && TOUCH_MODES(mode)) return;   // dat doen de touch-events al
+  if (TOUCH_MODES(mode)) { actDown(gamePt(e), e.pointerId); return; }
   if (state === 'dead' && mode === 'endless' && deadTimer > .7) { reset(); return; }   // tik om meteen opnieuw te rennen
   if (state === 'play' && mode === 'endless') { const q = gamePt(e); if (Math.hypot(q.x - SLIDE_BTN.x, q.y - (H - SLIDE_BTN.dy)) < SLIDE_BTN.r + 16) { slidePtrs.add(e.pointerId); syncHeld(); slideBuf = .14; return; } }
   if (mode === 'pizza') { if (state === 'play') pzPtrs.set(e.pointerId, gamePt(e).x); return; }
@@ -3330,9 +3347,9 @@ cv.addEventListener('pointerdown', e => {
 const jumpPtrs = new Set(), slidePtrs = new Set(); let keyJump = false, keySlide = false, jumpBuf = 0, slideBuf = 0, slideHeld = false;
 const SLIDE_BTN = {x: 64, dy: 62, r: 44};
 function syncHeld() { held = jumpPtrs.size > 0 || keyJump; slideHeld = slidePtrs.size > 0 || keySlide; }
-for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { jumpPtrs.delete(e.pointerId); slidePtrs.delete(e.pointerId); pzPtrs.delete(e.pointerId); syncHeld(); });
+for (const ev of ['pointerup', 'pointercancel']) window.addEventListener(ev, e => { jumpPtrs.delete(e.pointerId); slidePtrs.delete(e.pointerId); throwPtrs.delete(e.pointerId); pzPtrs.delete(e.pointerId); syncHeld(); });
 window.addEventListener('touchend', e => { if (!e.touches || e.touches.length === 0) { jumpPtrs.clear(); slidePtrs.clear(); syncHeld(); } }, {passive: true});
-window.addEventListener('blur', () => { jumpPtrs.clear(); slidePtrs.clear(); keyJump = false; syncHeld(); });
+window.addEventListener('blur', () => { jumpPtrs.clear(); slidePtrs.clear(); throwPtrs.clear(); keyJump = false; syncHeld(); });
 window.addEventListener('pointermove', e => { if (pzPtrs.has(e.pointerId)) pzPtrs.set(e.pointerId, gamePt(e).x); });
 window.addEventListener('keydown', e => {
   if (e.target && e.target.tagName === 'INPUT') return;
